@@ -98,8 +98,6 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             DispatchQueue.main.async {
                 self.steps = Int(sum.doubleValue(for: HKUnit.count()))
                 self.goalReached = self.steps >= self.dailyGoal
-                // Notify that steps loaded
-                NotificationCenter.default.post(name: NSNotification.Name("StepsLoaded"), object: nil)
             }
         }
         
@@ -320,5 +318,42 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return String(format: "+ %.1f%%", percent)
         }
         return "0%"
+    }
+    
+    // MARK: - Get historical steps for Firestore sync
+    func getHistoricalSteps(days: Int = 30, completion: @escaping ([String: Int]) -> Void) {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        var stepsHistory: [String: Int] = [:]
+        let group = DispatchGroup()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        
+        for i in 0..<days {
+            let dayStart = calendar.date(byAdding: .day, value: -i, to: today)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            let dateKey = formatter.string(from: dayStart)
+            
+            group.enter()
+            
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    stepsHistory[dateKey] = steps
+                }
+            }
+            
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            completion(stepsHistory)
+        }
     }
 }

@@ -202,6 +202,27 @@ class LeaderboardManager: ObservableObject {
         }
     }
     
+    // MARK: - Sync historical steps from HealthKit to Firestore
+    func syncHistoricalSteps(steps: [String: Int], name: String) {
+        guard Auth.auth().currentUser != nil else { return }
+        
+        // Update main document
+        let userData: [String: Any] = [
+            "name": name,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        db.collection("leaderboard").document(currentUserID).setData(userData, merge: true)
+        
+        // Update each day's steps
+        for (date, stepCount) in steps {
+            let dailyData: [String: Any] = [
+                "steps": stepCount,
+                "updatedAt": FieldValue.serverTimestamp()
+            ]
+            db.collection("leaderboard").document(currentUserID).collection("daily").document(date).setData(dailyData, merge: true)
+        }
+    }
+    
     // MARK: - Refresh leaderboard when period or date changes
     func refresh() {
         fetchLeaderboard()

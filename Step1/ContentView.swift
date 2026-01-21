@@ -136,10 +136,14 @@ struct MainAppView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             healthManager.requestAuthorization()
-            // Initial sync after data loads
+            // Sync steps after delay to ensure data is loaded
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if Calendar.current.isDateInToday(currentDate) {
                     leaderboardManager.updateCurrentUserSteps(healthManager.steps, name: authManager.userName)
+                }
+                // Sync historical steps (last 30 days)
+                healthManager.getHistoricalSteps(days: 30) { history in
+                    leaderboardManager.syncHistoricalSteps(steps: history, name: authManager.userName)
                 }
             }
         }

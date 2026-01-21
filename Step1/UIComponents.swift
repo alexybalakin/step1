@@ -97,6 +97,7 @@ struct LoginView: View {
 struct SettingsView: View {
     @ObservedObject var authManager: AuthManager
     @ObservedObject var healthManager: HealthManager
+    @ObservedObject var leaderboardManager: LeaderboardManager
     @State private var showNameEditor = false
     @State private var showGoalEditor = false
     
@@ -169,7 +170,7 @@ struct SettingsView: View {
                         
                         VStack(spacing: 12) {
                             Button(action: {
-                                LeaderboardManager().generateDemoUsers()
+                                leaderboardManager.generateDemoUsers()
                             }) {
                                 Text("Generate Demo Users")
                                     .font(.system(size: 17, weight: .semibold))
@@ -181,7 +182,7 @@ struct SettingsView: View {
                             }
                             
                             Button(action: {
-                                LeaderboardManager().deleteAllDemoUsers()
+                                leaderboardManager.deleteAllDemoUsers()
                             }) {
                                 Text("Delete All Demo Users")
                                     .font(.system(size: 17, weight: .semibold))
@@ -521,7 +522,19 @@ struct CircularProgressView: View {
                     .animation(.easeInOut(duration: 1), value: progress)
             }
             
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
+                // "Steps" label on top
+                Text("Steps")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                
+                // Steps number
+                Text("\(steps)")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundColor(.white)
+                    .contentTransition(.numericText())
+                
+                // Goal reached or percentage
                 if goalReached {
                     HStack(spacing: 4) {
                         Text("🎯")
@@ -530,31 +543,17 @@ struct CircularProgressView: View {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(Color(hex: "8E8E93"))
                     }
-                }
-                
-                // Steps number and label (on top)
-                VStack(spacing: 4) {
-                    Text("\(steps)")
-                        .font(.system(size: 56, weight: .bold))
-                        .foregroundColor(.white)
-                        .contentTransition(.numericText())
+                    .padding(.top, 4)
                     
-                    Text("Steps")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                }
-                
-                if goalReached {
                     Text(percentage)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color(hex: "34C759"))
-                }
-                
-                // Goal (on bottom)
-                if !goalReached {
+                } else {
+                    // Goal on bottom
                     Text("Goal \(goal.formatted())")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color(hex: "8E8E93"))
+                        .padding(.top, 4)
                 }
             }
         }
@@ -810,9 +809,48 @@ struct QuickGoalButton: View {
 
 // MARK: - Top Leaderboard View
 struct TopLeaderboardView: View {
-    @StateObject private var leaderboardManager = LeaderboardManager()
-    @State private var selectedPeriod = 0
+    @ObservedObject var leaderboardManager: LeaderboardManager
     let periods = ["Day", "Week", "Month"]
+    
+    var canGoForward: Bool {
+        let calendar = Calendar.current
+        let tomorrow: Date
+        
+        if leaderboardManager.selectedPeriod == 0 {
+            tomorrow = calendar.date(byAdding: .day, value: 1, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        } else if leaderboardManager.selectedPeriod == 1 {
+            tomorrow = calendar.date(byAdding: .weekOfYear, value: 1, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        } else {
+            tomorrow = calendar.date(byAdding: .month, value: 1, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        }
+        
+        return calendar.startOfDay(for: tomorrow) <= calendar.startOfDay(for: Date())
+    }
+    
+    var dateString: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        let calendar = Calendar.current
+        
+        if leaderboardManager.selectedPeriod == 0 {
+            if calendar.isDateInToday(leaderboardManager.selectedDate) {
+                return "Сегодня"
+            } else if calendar.isDateInYesterday(leaderboardManager.selectedDate) {
+                return "Вчера"
+            } else {
+                formatter.dateFormat = "d MMMM"
+                return formatter.string(from: leaderboardManager.selectedDate)
+            }
+        } else if leaderboardManager.selectedPeriod == 1 {
+            formatter.dateFormat = "d MMM"
+            let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: leaderboardManager.selectedDate))!
+            let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
+            return "\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd))"
+        } else {
+            formatter.dateFormat = "LLLL yyyy"
+            return formatter.string(from: leaderboardManager.selectedDate)
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -833,16 +871,17 @@ struct TopLeaderboardView: View {
                     ForEach(0..<periods.count, id: \.self) { index in
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedPeriod = index
+                                leaderboardManager.selectedPeriod = index
+                                leaderboardManager.refresh()
                             }
                         }) {
                             Text(periods[index])
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(selectedPeriod == index ? .white : Color(hex: "8E8E93"))
+                                .foregroundColor(leaderboardManager.selectedPeriod == index ? .white : Color(hex: "8E8E93"))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 32)
                                 .background(
-                                    selectedPeriod == index ?
+                                    leaderboardManager.selectedPeriod == index ?
                                     Color(hex: "2C2C2E") : Color.clear
                                 )
                                 .cornerRadius(8)
@@ -855,7 +894,42 @@ struct TopLeaderboardView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
                 
-                if leaderboardManager.users.isEmpty {
+                // Date Navigation
+                HStack {
+                    Button(action: {
+                        changeDate(by: -1)
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .foregroundColor(.white)
+                            .font(.system(size: 16))
+                    }
+                    
+                    Spacer()
+                    
+                    Text(dateString)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        changeDate(by: 1)
+                    }) {
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
+                            .font(.system(size: 16))
+                    }
+                    .disabled(!canGoForward)
+                }
+                .padding(.horizontal, 30)
+                .padding(.top, 16)
+                
+                if leaderboardManager.isLoading {
+                    Spacer()
+                    ProgressView()
+                        .tint(.white)
+                    Spacer()
+                } else if leaderboardManager.users.isEmpty {
                     Spacer()
                     Text("No users yet")
                         .font(.system(size: 17))
@@ -868,6 +942,26 @@ struct TopLeaderboardView: View {
                 } else {
                     LeaderboardList(leaderboardManager: leaderboardManager)
                 }
+            }
+        }
+    }
+    
+    func changeDate(by value: Int) {
+        let calendar = Calendar.current
+        let newDate: Date
+        
+        if leaderboardManager.selectedPeriod == 0 {
+            newDate = calendar.date(byAdding: .day, value: value, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        } else if leaderboardManager.selectedPeriod == 1 {
+            newDate = calendar.date(byAdding: .weekOfYear, value: value, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        } else {
+            newDate = calendar.date(byAdding: .month, value: value, to: leaderboardManager.selectedDate) ?? leaderboardManager.selectedDate
+        }
+        
+        if newDate <= Date() {
+            withAnimation {
+                leaderboardManager.selectedDate = newDate
+                leaderboardManager.refresh()
             }
         }
     }

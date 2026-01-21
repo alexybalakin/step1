@@ -4,6 +4,7 @@ import Foundation
 struct ContentView: View {
     @StateObject private var authManager = AuthManager()
     @StateObject private var healthManager = HealthManager()
+    @StateObject private var leaderboardManager = LeaderboardManager()
     @State private var selectedTab = 0
     @State private var selectedPeriod = 0
     @State private var currentDate = Date()
@@ -16,6 +17,7 @@ struct ContentView: View {
                 MainAppView(
                     authManager: authManager,
                     healthManager: healthManager,
+                    leaderboardManager: leaderboardManager,
                     selectedTab: $selectedTab,
                     selectedPeriod: $selectedPeriod,
                     currentDate: $currentDate,
@@ -33,6 +35,7 @@ struct ContentView: View {
 struct MainAppView: View {
     @ObservedObject var authManager: AuthManager
     @ObservedObject var healthManager: HealthManager
+    @ObservedObject var leaderboardManager: LeaderboardManager
     @Binding var selectedTab: Int
     @Binding var selectedPeriod: Int
     @Binding var currentDate: Date
@@ -120,9 +123,9 @@ struct MainAppView: View {
                     lastDate = currentDate
                 }
             } else if selectedTab == 1 {
-                TopLeaderboardView()
+                TopLeaderboardView(leaderboardManager: leaderboardManager)
             } else if selectedTab == 2 {
-                SettingsView(authManager: authManager, healthManager: healthManager)
+                SettingsView(authManager: authManager, healthManager: healthManager, leaderboardManager: leaderboardManager)
             }
             
             VStack {
@@ -133,11 +136,24 @@ struct MainAppView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             healthManager.requestAuthorization()
+            // Initial sync after data loads
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                if Calendar.current.isDateInToday(currentDate) {
+                    leaderboardManager.updateCurrentUserSteps(healthManager.steps, name: authManager.userName)
+                }
+            }
         }
         .sheet(isPresented: $showGoalEditor) {
             GoalEditorView(goal: $healthManager.dailyGoal)
         }
         .background(DateChangeHandler(currentDate: $currentDate, lastDate: $lastDate, healthManager: healthManager))
+        // Sync steps to leaderboard when they change
+        .onChange(of: healthManager.steps) { _, newSteps in
+            // Sync today's steps (including 0)
+            if Calendar.current.isDateInToday(currentDate) {
+                leaderboardManager.updateCurrentUserSteps(newSteps, name: authManager.userName)
+            }
+        }
     }
 }
 

@@ -98,6 +98,8 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             DispatchQueue.main.async {
                 self.steps = Int(sum.doubleValue(for: HKUnit.count()))
                 self.goalReached = self.steps >= self.dailyGoal
+                // Notify that steps loaded
+                NotificationCenter.default.post(name: NSNotification.Name("StepsLoaded"), object: nil)
             }
         }
         

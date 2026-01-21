@@ -303,6 +303,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Step1/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Steplease;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";
@@ -338,6 +339,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Step1/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Steplease;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";

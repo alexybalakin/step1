@@ -1304,8 +1304,8 @@ struct CircularProgressView: View {
         return Double(remainder) / Double(goal)
     }
     
-    private let circleSize: CGFloat = 260
-    private let strokeWidth: CGFloat = 16
+    private let circleSize: CGFloat = 280
+    private let strokeWidth: CGFloat = 12
     
     var body: some View {
         ZStack {
@@ -1365,7 +1365,7 @@ struct CircularProgressView: View {
                             .foregroundColor(.black)
                     }
                 }
-                .offset(y: -circleSize/2 + strokeWidth + 20)
+                .offset(y: -circleSize/2 + strokeWidth + 28)
             }
             
             // Center content
@@ -1388,7 +1388,7 @@ struct CircularProgressView: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color(hex: "8E8E93"))
-                .offset(y: circleSize/2 - strokeWidth - 20)
+                .offset(y: circleSize/2 - strokeWidth - 28)
         }
         .frame(width: circleSize, height: circleSize)
     }

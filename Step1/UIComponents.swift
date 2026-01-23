@@ -291,7 +291,28 @@ struct LoginView: View {
                                 .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
                         )
                     }
-                    
+                    // Continue without registration
+                                        Button(action: {
+                                            authManager.signInAnonymously()
+                                        }) {
+                                            HStack(spacing: 12) {
+                                                Image(systemName: "person.fill.questionmark")
+                                                    .font(.system(size: 20))
+                                                Text("Continue without registration")
+                                                    .font(.system(size: 17, weight: .medium))
+                                            }
+                                            .foregroundColor(Color(hex: "8E8E93"))
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 50)
+                                            .background(Color(hex: "1A1A1C"))
+                                            .cornerRadius(12)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
+                                            )
+                                        }
+                                        .disabled(authManager.isLoading)
+                                        .opacity(authManager.isLoading ? 0.6 : 1)
                     // Register link
                     Button(action: {
                         showEmailRegister = true

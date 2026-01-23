@@ -263,6 +263,33 @@ class AuthManager: ObservableObject {
         }
     }
     
+    // MARK: - Anonymous Sign In
+        func signInAnonymously() {
+            isLoading = true
+            
+            Auth.auth().signInAnonymously { [weak self] authResult, error in
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
+                
+                if let error = error {
+                    print("Anonymous auth error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let firebaseUser = authResult?.user else { return }
+                
+                DispatchQueue.main.async {
+                    self?.signIn(
+                        userID: firebaseUser.uid,
+                        name: "Guest",
+                        email: "",
+                        provider: "anonymous"
+                    )
+                }
+            }
+        }
+    
     // MARK: - Email Register
     func registerWithEmail(email: String, password: String, name: String, completion: @escaping (String?) -> Void) {
         isLoading = true

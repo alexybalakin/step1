@@ -10,10 +10,21 @@ struct ContentView: View {
     @State private var currentDate = Date()
     @State private var showGoalEditor = false
     @State private var lastDate = Date()
+    @State private var showSplash = true
+    @State private var isOnboardingComplete = true // Default true, will check after auth
     
     var body: some View {
-        Group {
-            if authManager.isAuthenticated {
+        ZStack {
+            if showSplash {
+                SplashScreenView()
+                    .transition(.opacity)
+            } else if !authManager.isAuthenticated {
+                LoginView(authManager: authManager)
+                    .transition(.opacity)
+            } else if !isOnboardingComplete {
+                OnboardingView(healthManager: healthManager, isOnboardingComplete: $isOnboardingComplete, userID: authManager.userID)
+                    .transition(.opacity)
+            } else {
                 MainAppView(
                     authManager: authManager,
                     healthManager: healthManager,
@@ -24,11 +35,36 @@ struct ContentView: View {
                     showGoalEditor: $showGoalEditor,
                     lastDate: $lastDate
                 )
-            } else {
-                LoginView(authManager: authManager)
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: showSplash)
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
+        .animation(.easeInOut(duration: 0.3), value: isOnboardingComplete)
+        .onAppear {
+            // Check onboarding status on appear if already authenticated
+            if authManager.isAuthenticated && !authManager.userID.isEmpty {
+                isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(authManager.userID)")
+            }
+            
+            // Hide splash after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation {
+                    showSplash = false
+                }
+            }
+        }
+        .onChange(of: authManager.isAuthenticated) { _, isAuth in
+            if isAuth && !authManager.userID.isEmpty {
+                isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(authManager.userID)")
+                selectedTab = 0 // Always show Main tab after login
+            }
+        }
+        .onChange(of: authManager.userID) { _, userID in
+            if !userID.isEmpty {
+                isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(userID)")
+            }
+        }
     }
 }
 
@@ -41,6 +77,7 @@ struct MainAppView: View {
     @Binding var currentDate: Date
     @Binding var showGoalEditor: Bool
     @Binding var lastDate: Date
+    @State private var isRefreshing = false
     
     var body: some View {
         ZStack {
@@ -51,32 +88,22 @@ struct MainAppView: View {
                 VStack(spacing: 0) {
                     TopNavigationView(
                         selectedPeriod: $selectedPeriod,
-                        currentDate: $currentDate
+                        currentDate: $currentDate,
+                        healthManager: healthManager
                     )
                     .padding(.top, 20)
                     
                     ScrollView {
                         VStack(spacing: 12) {
-                            ZStack {
-                                CircularProgressView(
-                                    steps: healthManager.steps,
-                                    goal: healthManager.dailyGoal,
-                                    progress: healthManager.progress,
-                                    percentage: healthManager.percentageOverGoal,
-                                    goalReached: healthManager.goalReached
-                                )
-                                
-                                VStack {
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(Color(hex: "8E8E93"))
-                                        .padding(.bottom, 35)
-                                }
-                                .frame(height: 280)
-                            }
-                            .padding(.top, 30)
-                            .padding(.bottom, 8)
+                            CircularProgressView(
+                                steps: healthManager.steps,
+                                goal: healthManager.dailyGoal,
+                                progress: healthManager.progress,
+                                percentage: healthManager.percentageOverGoal,
+                                goalReached: healthManager.goalReached
+                            )
+                            .padding(.top, 34)
+                            .padding(.bottom, 14)
                             .onTapGesture {
                                 showGoalEditor = true
                             }
@@ -114,6 +141,9 @@ struct MainAppView: View {
                             .padding(.bottom, 100)
                         }
                     }
+                    .refreshable {
+                        await refreshData()
+                    }
                     
                     Spacer()
                 }
@@ -123,7 +153,7 @@ struct MainAppView: View {
                     lastDate = currentDate
                 }
             } else if selectedTab == 1 {
-                TopLeaderboardView(leaderboardManager: leaderboardManager)
+                TopLeaderboardView(leaderboardManager: leaderboardManager, authManager: authManager)
             } else if selectedTab == 2 {
                 SettingsView(authManager: authManager, healthManager: healthManager, leaderboardManager: leaderboardManager)
             }
@@ -158,6 +188,13 @@ struct MainAppView: View {
                 leaderboardManager.updateCurrentUserSteps(newSteps, name: authManager.userName)
             }
         }
+    }
+    
+    func refreshData() async {
+        healthManager.currentDate = currentDate
+        healthManager.loadDataForCurrentDate()
+        // Small delay to show refresh animation
+        try? await Task.sleep(nanoseconds: 500_000_000)
     }
 }
 

@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		175DD31E2F221FF10066392A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175DD31D2F221FF10066392A /* WidgetKit.framework */; };
+		175DD3202F221FF10066392A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175DD31F2F221FF10066392A /* SwiftUI.framework */; };
+		175DD32F2F221FF30066392A /* StepWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 175DD31C2F221FF10066392A /* StepWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1789C4492F1F5D6000CB079B /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 1789C4482F1F5D6000CB079B /* GoogleSignIn */; };
 		1789C44B2F1F5D6000CB079B /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 1789C44A2F1F5D6000CB079B /* GoogleSignInSwift */; };
 		1789C4522F1F65DA00CB079B /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1789C4512F1F65DA00CB079B /* FirebaseCore */; };
@@ -15,12 +18,47 @@
 		1789C4582F1F695000CB079B /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1789C4572F1F695000CB079B /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		175DD32D2F221FF30066392A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 178573B92F1D4C07007C6A0B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 175DD31B2F221FF10066392A;
+			remoteInfo = StepWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		175DD3342F221FF30066392A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				175DD32F2F221FF30066392A /* StepWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		175DD31C2F221FF10066392A /* StepWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StepWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		175DD31D2F221FF10066392A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		175DD31F2F221FF10066392A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		175DD3352F2227AD0066392A /* StepWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StepWidgetExtension.entitlements; sourceTree = "<group>"; };
 		178573C12F1D4C07007C6A0B /* Step1.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Step1.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1789C4572F1F695000CB079B /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		175DD3332F221FF30066392A /* Exceptions for "StepWidget" folder in "StepWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 175DD31B2F221FF10066392A /* StepWidgetExtension */;
+		};
 		178573D12F1D4F04007C6A0B /* Exceptions for "Step1" folder in "Step1" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -31,6 +69,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		175DD3212F221FF10066392A /* StepWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				175DD3332F221FF30066392A /* Exceptions for "StepWidget" folder in "StepWidgetExtension" target */,
+			);
+			path = StepWidget;
+			sourceTree = "<group>";
+		};
 		178573C32F1D4C07007C6A0B /* Step1 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -42,6 +88,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		175DD3192F221FF10066392A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				175DD3202F221FF10066392A /* SwiftUI.framework in Frameworks */,
+				175DD31E2F221FF10066392A /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		178573BE2F1D4C07007C6A0B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -60,8 +115,10 @@
 		178573B82F1D4C07007C6A0B = {
 			isa = PBXGroup;
 			children = (
+				175DD3352F2227AD0066392A /* StepWidgetExtension.entitlements */,
 				1789C4572F1F695000CB079B /* GoogleService-Info.plist */,
 				178573C32F1D4C07007C6A0B /* Step1 */,
+				175DD3212F221FF10066392A /* StepWidget */,
 				1789C4502F1F65DA00CB079B /* Frameworks */,
 				178573C22F1D4C07007C6A0B /* Products */,
 			);
@@ -71,6 +128,7 @@
 			isa = PBXGroup;
 			children = (
 				178573C12F1D4C07007C6A0B /* Step1.app */,
+				175DD31C2F221FF10066392A /* StepWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -78,6 +136,8 @@
 		1789C4502F1F65DA00CB079B /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				175DD31D2F221FF10066392A /* WidgetKit.framework */,
+				175DD31F2F221FF10066392A /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -85,6 +145,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		175DD31B2F221FF10066392A /* StepWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 175DD3302F221FF30066392A /* Build configuration list for PBXNativeTarget "StepWidgetExtension" */;
+			buildPhases = (
+				175DD3182F221FF10066392A /* Sources */,
+				175DD3192F221FF10066392A /* Frameworks */,
+				175DD31A2F221FF10066392A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				175DD3212F221FF10066392A /* StepWidget */,
+			);
+			name = StepWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = StepWidgetExtension;
+			productReference = 175DD31C2F221FF10066392A /* StepWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		178573C02F1D4C07007C6A0B /* Step1 */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 178573CC2F1D4C09007C6A0B /* Build configuration list for PBXNativeTarget "Step1" */;
@@ -92,10 +174,12 @@
 				178573BD2F1D4C07007C6A0B /* Sources */,
 				178573BE2F1D4C07007C6A0B /* Frameworks */,
 				178573BF2F1D4C07007C6A0B /* Resources */,
+				175DD3342F221FF30066392A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				175DD32E2F221FF30066392A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				178573C32F1D4C07007C6A0B /* Step1 */,
@@ -122,6 +206,9 @@
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
+					175DD31B2F221FF10066392A = {
+						CreatedOnToolsVersion = 16.4;
+					};
 					178573C02F1D4C07007C6A0B = {
 						CreatedOnToolsVersion = 16.4;
 					};
@@ -146,11 +233,19 @@
 			projectRoot = "";
 			targets = (
 				178573C02F1D4C07007C6A0B /* Step1 */,
+				175DD31B2F221FF10066392A /* StepWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		175DD31A2F221FF10066392A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		178573BF2F1D4C07007C6A0B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -162,6 +257,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		175DD3182F221FF10066392A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		178573BD2F1D4C07007C6A0B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -171,7 +273,71 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		175DD32E2F221FF30066392A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 175DD31B2F221FF10066392A /* StepWidgetExtension */;
+			targetProxy = 175DD32D2F221FF30066392A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		175DD3312F221FF30066392A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = StepWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64DW2BWM26;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StepWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = StepWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alex.Step1.StepWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		175DD3322F221FF30066392A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = StepWidgetExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64DW2BWM26;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StepWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = StepWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alex.Step1.StepWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		178573CA2F1D4C09007C6A0B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -298,7 +464,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Step1/Step1.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 64DW2BWM26;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -308,12 +474,12 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to track walking distance";
-				INFOPLIST_KEY_NSUserTrackingUsageDescription = "We use this to identify you";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -321,9 +487,13 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = alex.Step1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -334,7 +504,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Step1/Step1.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 64DW2BWM26;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -344,12 +514,12 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to track walking distance";
-				INFOPLIST_KEY_NSUserTrackingUsageDescription = "We use this to identify you";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -357,15 +527,28 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = alex.Step1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		175DD3302F221FF30066392A /* Build configuration list for PBXNativeTarget "StepWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				175DD3312F221FF30066392A /* Debug */,
+				175DD3322F221FF30066392A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		178573BC2F1D4C07007C6A0B /* Build configuration list for PBXProject "Step1" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

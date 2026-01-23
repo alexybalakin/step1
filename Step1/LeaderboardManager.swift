@@ -33,6 +33,7 @@ class LeaderboardManager: ObservableObject {
     
     init() {
         fetchLeaderboard()
+        loadFriends()
     }
     
     deinit {
@@ -231,6 +232,53 @@ class LeaderboardManager: ObservableObject {
     // MARK: - Get Current User Rank
     func getCurrentUserRank() -> Int? {
         return users.firstIndex(where: { $0.id == currentUserID }).map { $0 + 1 }
+    }
+    
+    // MARK: - Friends Management
+    @Published var friends: Set<String> = []
+    @Published var showFriendsOnly: Bool = false
+    
+    var filteredUsers: [LeaderboardUser] {
+        if showFriendsOnly {
+            return users.filter { friends.contains($0.id) || $0.id == currentUserID }
+        }
+        return users
+    }
+    
+    func loadFriends() {
+        guard Auth.auth().currentUser != nil else { return }
+        
+        db.collection("users").document(currentUserID).getDocument { [weak self] snapshot, error in
+            if let data = snapshot?.data(), let friendsList = data["friends"] as? [String] {
+                DispatchQueue.main.async {
+                    self?.friends = Set(friendsList)
+                }
+            }
+        }
+    }
+    
+    func addFriend(userId: String) {
+        guard Auth.auth().currentUser != nil else { return }
+        
+        friends.insert(userId)
+        
+        db.collection("users").document(currentUserID).setData([
+            "friends": Array(friends)
+        ], merge: true)
+    }
+    
+    func removeFriend(userId: String) {
+        guard Auth.auth().currentUser != nil else { return }
+        
+        friends.remove(userId)
+        
+        db.collection("users").document(currentUserID).setData([
+            "friends": Array(friends)
+        ], merge: true)
+    }
+    
+    func isFriend(userId: String) -> Bool {
+        return friends.contains(userId)
     }
     
     // MARK: - Generate Demo Users (for testing)

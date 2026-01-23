@@ -9,6 +9,7 @@ import SwiftUI
 import AuthenticationServices
 import FirebaseCore
 import FirebaseAuth
+import FirebaseFirestore
 import GoogleSignIn
 
 class AuthManager: ObservableObject {
@@ -17,7 +18,9 @@ class AuthManager: ObservableObject {
     @Published var userName: String = ""
     @Published var userEmail: String = ""
     @Published var isLoading = false
-    @Published var authProvider: String = "" // "apple" or "google"
+    @Published var authProvider: String = "" // "apple", "google", or "email"
+    
+    private let db = Firestore.firestore()
     
     init() {
         checkAuthStatus()
@@ -29,9 +32,11 @@ class AuthManager: ObservableObject {
         if let currentUser = Auth.auth().currentUser {
             self.isAuthenticated = true
             self.userID = currentUser.uid
-            self.userName = currentUser.displayName ?? UserDefaults.standard.string(forKey: "userName") ?? ""
             self.userEmail = currentUser.email ?? ""
             self.authProvider = UserDefaults.standard.string(forKey: "authProvider") ?? ""
+            
+            // Load name from Firestore
+            loadUserNameFromFirestore()
             return
         }
         
@@ -47,9 +52,9 @@ class AuthManager: ObservableObject {
                 case .authorized:
                     self?.isAuthenticated = true
                     self?.userID = savedUserID
-                    self?.userName = UserDefaults.standard.string(forKey: "userName") ?? ""
                     self?.userEmail = UserDefaults.standard.string(forKey: "userEmail") ?? ""
                     self?.authProvider = "apple"
+                    self?.loadUserNameFromFirestore()
                 case .revoked, .notFound:
                     self?.signOut()
                 default:
@@ -59,12 +64,51 @@ class AuthManager: ObservableObject {
         }
     }
     
+    // MARK: - Load user name from Firestore
+    private func loadUserNameFromFirestore() {
+        guard !userID.isEmpty else { return }
+        
+        db.collection("users").document(userID).getDocument { [weak self] snapshot, error in
+            if let data = snapshot?.data(), let name = data["name"] as? String, !name.isEmpty {
+                DispatchQueue.main.async {
+                    self?.userName = name
+                    UserDefaults.standard.set(name, forKey: "userName")
+                }
+            } else {
+                // Fallback to local storage
+                DispatchQueue.main.async {
+                    self?.userName = UserDefaults.standard.string(forKey: "userName") ?? "User"
+                }
+            }
+        }
+    }
+    
+    // MARK: - Save user name to Firestore
+    func saveUserNameToFirestore(_ name: String) {
+        guard !userID.isEmpty else { return }
+        
+        self.userName = name
+        UserDefaults.standard.set(name, forKey: "userName")
+        
+        db.collection("users").document(userID).setData([
+            "name": name,
+            "email": userEmail,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+        
+        // Also update in leaderboard
+        db.collection("leaderboard").document(userID).setData([
+            "name": name,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+    }
+    
     // MARK: - Handle Sign in with Apple
     func handleSignInWithApple(result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authorization):
             if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                let userID = appleIDCredential.user
+                let userIdentifier = appleIDCredential.user
                 
                 var name = ""
                 if let fullName = appleIDCredential.fullName {
@@ -75,13 +119,37 @@ class AuthManager: ObservableObject {
                 
                 let email = appleIDCredential.email ?? ""
                 
-                let savedName = UserDefaults.standard.string(forKey: "userName") ?? ""
-                let savedEmail = UserDefaults.standard.string(forKey: "userEmail") ?? ""
+                // Get token for Firebase
+                guard let identityToken = appleIDCredential.identityToken,
+                      let tokenString = String(data: identityToken, encoding: .utf8) else {
+                    print("Unable to get identity token")
+                    signIn(userID: userIdentifier, name: name, email: email, provider: "apple")
+                    return
+                }
                 
-                let finalName = name.isEmpty ? savedName : name
-                let finalEmail = email.isEmpty ? savedEmail : email
+                // Sign in to Firebase with Apple credential
+                let credential = OAuthProvider.appleCredential(
+                    withIDToken: tokenString,
+                    rawNonce: nil,
+                    fullName: appleIDCredential.fullName
+                )
                 
-                signIn(userID: userID, name: finalName, email: finalEmail, provider: "apple")
+                Auth.auth().signIn(with: credential) { [weak self] authResult, error in
+                    if let error = error {
+                        print("Firebase Apple auth error: \(error.localizedDescription)")
+                        self?.signIn(userID: userIdentifier, name: name, email: email, provider: "apple")
+                        return
+                    }
+                    
+                    guard let firebaseUser = authResult?.user else { return }
+                    
+                    let finalEmail = email.isEmpty ? (firebaseUser.email ?? "") : email
+                    
+                    DispatchQueue.main.async {
+                        // Pass name only if it's from Apple (first sign in), otherwise load from Firestore
+                        self?.signIn(userID: firebaseUser.uid, name: name, email: finalEmail, provider: "apple")
+                    }
+                }
             }
             
         case .failure(let error):
@@ -142,9 +210,10 @@ class AuthManager: ObservableObject {
                 guard let firebaseUser = authResult?.user else { return }
                 
                 DispatchQueue.main.async {
+                    // Don't use Google display name, load from Firestore instead
                     self?.signIn(
                         userID: firebaseUser.uid,
-                        name: firebaseUser.displayName ?? user.profile?.name ?? "",
+                        name: "", // Will be loaded from Firestore
                         email: firebaseUser.email ?? user.profile?.email ?? "",
                         provider: "google"
                     )
@@ -153,21 +222,111 @@ class AuthManager: ObservableObject {
         }
     }
     
+    // MARK: - Email Sign In
+    func signInWithEmail(email: String, password: String, completion: @escaping (String?) -> Void) {
+        print("📧 signInWithEmail called with email: \(email)")
+        isLoading = true
+        
+        Auth.auth().signIn(withEmail: email, password: password) { [weak self] authResult, error in
+            print("📧 Firebase response received")
+            
+            DispatchQueue.main.async {
+                self?.isLoading = false
+            }
+            
+            if let error = error {
+                print("📧 Error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    completion(error.localizedDescription)
+                }
+                return
+            }
+            
+            guard let firebaseUser = authResult?.user else {
+                print("📧 No user in response")
+                DispatchQueue.main.async {
+                    completion("Unknown error")
+                }
+                return
+            }
+            
+            print("📧 Success! User: \(firebaseUser.uid)")
+            DispatchQueue.main.async {
+                self?.signIn(
+                    userID: firebaseUser.uid,
+                    name: "", // Will be loaded from Firestore
+                    email: firebaseUser.email ?? email,
+                    provider: "email"
+                )
+                completion(nil)
+            }
+        }
+    }
+    
+    // MARK: - Email Register
+    func registerWithEmail(email: String, password: String, name: String, completion: @escaping (String?) -> Void) {
+        isLoading = true
+        
+        Auth.auth().createUser(withEmail: email, password: password) { [weak self] authResult, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+            }
+            
+            if let error = error {
+                completion(error.localizedDescription)
+                return
+            }
+            
+            guard let firebaseUser = authResult?.user else {
+                completion("Unknown error")
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self?.signIn(
+                    userID: firebaseUser.uid,
+                    name: name,
+                    email: firebaseUser.email ?? email,
+                    provider: "email"
+                )
+                // Save name to Firestore
+                self?.saveUserNameToFirestore(name)
+                completion(nil)
+            }
+        }
+    }
+    
+    // MARK: - Reset Password
+    func resetPassword(email: String, completion: @escaping (String?) -> Void) {
+        Auth.auth().sendPasswordReset(withEmail: email) { error in
+            if let error = error {
+                completion(error.localizedDescription)
+            } else {
+                completion(nil)
+            }
+        }
+    }
+    
     // MARK: - Sign In
     func signIn(userID: String, name: String, email: String, provider: String) {
         self.userID = userID
-        self.userName = name.isEmpty ? "User" : name
         self.userEmail = email
         self.isAuthenticated = true
         self.authProvider = provider
         
         UserDefaults.standard.set(userID, forKey: "userID")
         UserDefaults.standard.set(provider, forKey: "authProvider")
-        if !name.isEmpty {
-            UserDefaults.standard.set(name, forKey: "userName")
-        }
         if !email.isEmpty {
             UserDefaults.standard.set(email, forKey: "userEmail")
+        }
+        
+        // Load or save name
+        if name.isEmpty {
+            loadUserNameFromFirestore()
+        } else {
+            self.userName = name
+            UserDefaults.standard.set(name, forKey: "userName")
+            saveUserNameToFirestore(name)
         }
     }
     
@@ -189,5 +348,43 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "userName")
         UserDefaults.standard.removeObject(forKey: "userEmail")
         UserDefaults.standard.removeObject(forKey: "authProvider")
+    }
+    
+    // MARK: - Delete Account
+    func deleteAccount(completion: @escaping (String?) -> Void) {
+        guard let user = Auth.auth().currentUser else {
+            completion("No user logged in")
+            return
+        }
+        
+        let userId = user.uid
+        
+        // Delete user data from Firestore
+        let batch = db.batch()
+        
+        // Delete from users collection
+        batch.deleteDocument(db.collection("users").document(userId))
+        
+        // Delete from leaderboard collection
+        batch.deleteDocument(db.collection("leaderboard").document(userId))
+        
+        batch.commit { [weak self] error in
+            if let error = error {
+                print("Error deleting Firestore data: \(error.localizedDescription)")
+            }
+            
+            // Delete Firebase Auth account
+            user.delete { error in
+                if let error = error {
+                    completion(error.localizedDescription)
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    self?.signOut()
+                    completion(nil)
+                }
+            }
+        }
     }
 }

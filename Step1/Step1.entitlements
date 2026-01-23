@@ -10,5 +10,9 @@
 	<true/>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.alex.Step1</string>
+	</array>
 </dict>
 </plist>

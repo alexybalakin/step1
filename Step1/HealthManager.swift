@@ -8,6 +8,7 @@
 import SwiftUI
 import HealthKit
 import CoreLocation
+import WidgetKit
 
 class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     let healthStore = HKHealthStore()
@@ -41,8 +42,12 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         loadDailyGoal()
     }
     
-    private func saveDailyGoal() {
+    func saveDailyGoal() {
         UserDefaults.standard.set(dailyGoal, forKey: "dailyStepGoal")
+        // Save to App Group for widget
+        UserDefaults(suiteName: "group.alex.Step1")?.set(dailyGoal, forKey: "dailyStepGoal")
+        // Reload widget
+        WidgetCenter.shared.reloadAllTimelines()
     }
     
     private func loadDailyGoal() {
@@ -256,10 +261,6 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         
-        // Start from yesterday and go backwards
-        var streakDays = 0
-        var checkDate = calendar.date(byAdding: .day, value: -1, to: today)!
-        
         let group = DispatchGroup()
         var results: [Date: Bool] = [:]
         
@@ -273,7 +274,7 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             
             let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
             
-            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
                 defer { group.leave() }
                 
                 let steps: Int
@@ -319,6 +320,34 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         return "0%"
     }
+    // MARK: - Check if day is completed
+        func isDayCompleted(_ date: Date) -> Bool {
+            let calendar = Calendar.current
+            let dateStart = calendar.startOfDay(for: date)
+            let today = calendar.startOfDay(for: Date())
+            
+            // Будущие даты не могут быть завершены
+            if dateStart > today {
+                return false
+            }
+            
+            // Для текущей даты используем уже загруженные данные
+            if dateStart == calendar.startOfDay(for: currentDate) {
+                return steps >= dailyGoal
+            }
+            
+            // Для других дат проверяем weekStreak если это текущая неделя
+            let currentWeekday = calendar.component(.weekday, from: currentDate)
+            let daysFromMonday = currentWeekday == 1 ? 6 : currentWeekday - 2
+            let weekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: calendar.startOfDay(for: currentDate))!
+            
+            if let daysDiff = calendar.dateComponents([.day], from: weekStart, to: dateStart).day,
+               daysDiff >= 0 && daysDiff < 7 {
+                return weekStreak[daysDiff]
+            }
+            
+            return false
+        }
     
     // MARK: - Get historical steps for Firestore sync
     func getHistoricalSteps(days: Int = 30, completion: @escaping ([String: Int]) -> Void) {

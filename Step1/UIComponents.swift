@@ -1765,7 +1765,7 @@ struct TopLeaderboardView: View {
             let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
             return "\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd))".uppercased()
         } else {
-            formatter.dateFormat = "MMMM"
+            formatter.dateFormat = "MMM"
             return formatter.string(from: leaderboardManager.selectedDate).uppercased()
         }
     }

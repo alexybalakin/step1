@@ -1365,7 +1365,7 @@ struct CircularProgressView: View {
                             .foregroundColor(.black)
                     }
                 }
-                .offset(y: -circleSize/2 + strokeWidth/2)
+                .offset(y: -circleSize/2 + strokeWidth + 20)
             }
             
             // Center content
@@ -1388,7 +1388,7 @@ struct CircularProgressView: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color(hex: "8E8E93"))
-                .offset(y: circleSize/2 - strokeWidth/2 - 6)
+                .offset(y: circleSize/2 - strokeWidth - 20)
         }
         .frame(width: circleSize, height: circleSize)
     }

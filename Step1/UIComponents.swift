@@ -295,12 +295,8 @@ struct LoginView: View {
                                         Button(action: {
                                             authManager.signInAnonymously()
                                         }) {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: "person.fill.questionmark")
-                                                    .font(.system(size: 20))
-                                                Text("Continue without registration")
-                                                    .font(.system(size: 17, weight: .medium))
-                                            }
+                                            Text("Continue without registration")
+                                                                        .font(.system(size: 17, weight: .medium))
                                             .foregroundColor(Color(hex: "8E8E93"))
                                             .frame(maxWidth: .infinity)
                                             .frame(height: 50)
@@ -1070,7 +1066,7 @@ struct TopNavigationView: View {
             .disabled(!canGoForward)
         }
         .frame(height: 28)
-        .background(Color(hex: "2C2C2E"))
+        .background(Color(hex: "1A1A1C"))
         .cornerRadius(8)
         .fullScreenCover(isPresented: $showCalendar) {
             CalendarOverlayView(

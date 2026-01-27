@@ -28,8 +28,23 @@ struct StepProvider: TimelineProvider {
     }
     
     func getSnapshot(in context: Context, completion: @escaping (StepEntry) -> Void) {
-        let entry = StepEntry(date: Date(), steps: 8765, goal: 10000, progress: 0.87, goalReached: false, multiplier: 0)
-        completion(entry)
+        fetchSteps { steps in
+            let goal = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "dailyStepGoal") ?? 10000
+            let actualGoal = goal > 0 ? goal : 10000
+            let progress = min(Double(steps) / Double(actualGoal), 1.0)
+            let goalReached = steps >= actualGoal
+            let multiplier = actualGoal > 0 ? steps / actualGoal : 0
+            
+            let entry = StepEntry(
+                date: Date(),
+                steps: steps,
+                goal: actualGoal,
+                progress: progress,
+                goalReached: goalReached,
+                multiplier: multiplier
+            )
+            completion(entry)
+        }
     }
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepEntry>) -> Void) {
@@ -49,8 +64,8 @@ struct StepProvider: TimelineProvider {
                 multiplier: multiplier
             )
             
-            // Update every 15 minutes
-            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+            // Update every 5 minutes for better stability
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
             let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
             completion(timeline)
         }
@@ -70,15 +85,12 @@ struct StepProvider: TimelineProvider {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
         
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
-            guard let result = result, let sum = result.sumQuantity() else {
-                DispatchQueue.main.async {
-                    completion(0)
-                }
-                return
-            }
-            
-            let steps = Int(sum.doubleValue(for: HKUnit.count()))
             DispatchQueue.main.async {
+                guard let result = result, let sum = result.sumQuantity() else {
+                    completion(0)
+                    return
+                }
+                let steps = Int(sum.doubleValue(for: HKUnit.count()))
                 completion(steps)
             }
         }
@@ -119,12 +131,39 @@ struct SmallWidgetView: View {
     
     var body: some View {
         ZStack {
-            // Circle centered, larger
+            // Checkmark in top right corner when goal reached
+            if entry.goalReached {
+                VStack {
+                    HStack {
+                        Spacer()
+                        ZStack {
+                            Circle()
+                                .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
+                                .frame(width: 16, height: 16)
+                            
+                            if entry.multiplier > 1 {
+                                Text("\(entry.multiplier)x")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.black)
+                            } else {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding(.top, 12)
+                        .padding(.trailing, 12)
+                    }
+                    Spacer()
+                }
+            }
+            
+            // Progress circle - reduced diameter (100 instead of 120)
             ZStack {
                 // Background circle
                 Circle()
-                    .stroke(Color(red: 44/255, green: 44/255, blue: 46/255), lineWidth: 10)
-                    .frame(width: 120, height: 120)
+                    .stroke(Color(red: 44/255, green: 44/255, blue: 46/255), lineWidth: 8)
+                    .frame(width: 100, height: 100)
                 
                 // Progress circle
                 if entry.multiplier == 0 {
@@ -132,42 +171,34 @@ struct SmallWidgetView: View {
                         .trim(from: 0, to: entry.progress)
                         .stroke(
                             Color(red: 52/255, green: 199/255, blue: 89/255),
-                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
                         )
-                        .frame(width: 120, height: 120)
+                        .frame(width: 100, height: 100)
                         .rotationEffect(.degrees(-90))
                 } else {
                     // Full circle when goal reached
                     Circle()
-                        .stroke(Color(red: 52/255, green: 199/255, blue: 89/255), lineWidth: 10)
-                        .frame(width: 120, height: 120)
+                        .stroke(Color(red: 52/255, green: 199/255, blue: 89/255), lineWidth: 8)
+                        .frame(width: 100, height: 100)
                     
-                    // Inner progress
+                    // Inner progress for multiplier
                     if currentProgress > 0 {
                         Circle()
                             .trim(from: 0, to: currentProgress)
                             .stroke(
                                 Color(red: 52/255, green: 199/255, blue: 89/255),
-                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
                             )
-                            .frame(width: 96, height: 96)
+                            .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
                     }
                 }
                 
-                // Steps text in center
+                // Steps text - 18px
                 Text("\(entry.steps.formatted())")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
                     .minimumScaleFactor(0.5)
-                
-                // Checkmark or multiplier at top
-                if entry.goalReached {
-                    Circle()
-                        .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
-                        .frame(width: 16, height: 16)
-                        .offset(y: -68)
-                }
             }
         }
         .containerBackground(for: .widget) {

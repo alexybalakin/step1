@@ -109,7 +109,12 @@ class LeaderboardManager: ObservableObject {
                 
                 for doc in documents {
                     let data = doc.data()
-                    guard let name = data["name"] as? String else { continue }
+                    var name = data["name"] as? String ?? ""
+                    
+                    // FIX #2: если имя пустое, присваиваем "User N"
+                    if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                        name = "User \(doc.documentID.prefix(4))"
+                    }
                     
                     // Check if demo user
                     let isDemo = data["isDemo"] as? Bool ?? false
@@ -182,9 +187,15 @@ class LeaderboardManager: ObservableObject {
         
         let today = dateString(from: Date())
         
+        // FIX #2: Проверяем, не пустое ли имя
+        var finalName = name
+        if finalName.trimmingCharacters(in: .whitespaces).isEmpty {
+            finalName = generateUniqueUserName()
+        }
+        
         // Update main document with name
         let userData: [String: Any] = [
-            "name": name,
+            "name": finalName,
             "updatedAt": FieldValue.serverTimestamp()
         ]
         
@@ -203,13 +214,76 @@ class LeaderboardManager: ObservableObject {
         }
     }
     
+    // MARK: - FIX #2: Generate unique "User N" name
+    func generateUniqueUserName() -> String {
+        // Собираем существующие номера User N
+        let existingNumbers = users.compactMap { user -> Int? in
+            let name = user.name
+            if name.hasPrefix("User ") {
+                let numberPart = name.dropFirst(5)
+                return Int(numberPart)
+            }
+            return nil
+        }
+        
+        // Находим следующий свободный номер
+        var nextNumber = 1
+        while existingNumbers.contains(nextNumber) {
+            nextNumber += 1
+        }
+        
+        return "User \(nextNumber)"
+    }
+    
+    // MARK: - FIX #2: Assign names to users with empty names
+    func assignNamesToEmptyUsers() {
+        db.collection("leaderboard").getDocuments { [weak self] snapshot, error in
+            guard let self = self, let documents = snapshot?.documents else { return }
+            
+            var usedNumbers: Set<Int> = []
+            
+            // First pass: collect existing User N numbers
+            for doc in documents {
+                if let name = doc.data()["name"] as? String, name.hasPrefix("User ") {
+                    if let num = Int(name.dropFirst(5)) {
+                        usedNumbers.insert(num)
+                    }
+                }
+            }
+            
+            // Second pass: assign numbers to empty names
+            for doc in documents {
+                let name = doc.data()["name"] as? String ?? ""
+                if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Find next available number
+                    var nextNumber = 1
+                    while usedNumbers.contains(nextNumber) {
+                        nextNumber += 1
+                    }
+                    usedNumbers.insert(nextNumber)
+                    
+                    let newName = "User \(nextNumber)"
+                    self.db.collection("leaderboard").document(doc.documentID).updateData([
+                        "name": newName
+                    ])
+                }
+            }
+        }
+    }
+    
     // MARK: - Sync historical steps from HealthKit to Firestore
     func syncHistoricalSteps(steps: [String: Int], name: String) {
         guard Auth.auth().currentUser != nil else { return }
         
+        // FIX #2: Проверяем имя
+        var finalName = name
+        if finalName.trimmingCharacters(in: .whitespaces).isEmpty {
+            finalName = generateUniqueUserName()
+        }
+        
         // Update main document
         let userData: [String: Any] = [
-            "name": name,
+            "name": finalName,
             "updatedAt": FieldValue.serverTimestamp()
         ]
         db.collection("leaderboard").document(currentUserID).setData(userData, merge: true)

@@ -18,7 +18,7 @@ class AuthManager: ObservableObject {
     @Published var userName: String = ""
     @Published var userEmail: String = ""
     @Published var isLoading = false
-    @Published var authProvider: String = "" // "apple", "google", or "email"
+    @Published var authProvider: String = "" // "apple", "google", "email", or "anonymous"
     
     private let db = Firestore.firestore()
     
@@ -75,10 +75,50 @@ class AuthManager: ObservableObject {
                     UserDefaults.standard.set(name, forKey: "userName")
                 }
             } else {
-                // Fallback to local storage
+                // Fallback to local storage or generate name
                 DispatchQueue.main.async {
-                    self?.userName = UserDefaults.standard.string(forKey: "userName") ?? "User"
+                    let localName = UserDefaults.standard.string(forKey: "userName") ?? ""
+                    if localName.isEmpty {
+                        // FIX #2: Генерируем имя для пользователя без имени
+                        self?.generateAndSaveUserName()
+                    } else {
+                        self?.userName = localName
+                    }
                 }
+            }
+        }
+    }
+    
+    // MARK: - FIX #2: Generate unique user name
+    private func generateAndSaveUserName() {
+        db.collection("leaderboard").getDocuments { [weak self] snapshot, error in
+            guard let self = self else { return }
+            
+            var usedNumbers: Set<Int> = []
+            
+            // Collect existing User N numbers
+            if let documents = snapshot?.documents {
+                for doc in documents {
+                    if let name = doc.data()["name"] as? String, name.hasPrefix("User ") {
+                        if let num = Int(name.dropFirst(5)) {
+                            usedNumbers.insert(num)
+                        }
+                    }
+                }
+            }
+            
+            // Find next available number
+            var nextNumber = 1
+            while usedNumbers.contains(nextNumber) {
+                nextNumber += 1
+            }
+            
+            let newName = "User \(nextNumber)"
+            
+            DispatchQueue.main.async {
+                self.userName = newName
+                UserDefaults.standard.set(newName, forKey: "userName")
+                self.saveUserNameToFirestore(newName)
             }
         }
     }
@@ -87,18 +127,22 @@ class AuthManager: ObservableObject {
     func saveUserNameToFirestore(_ name: String) {
         guard !userID.isEmpty else { return }
         
-        self.userName = name
-        UserDefaults.standard.set(name, forKey: "userName")
+        // FIX #2: Проверяем, что имя не пустое
+        let finalName = name.trimmingCharacters(in: .whitespaces).isEmpty ? userName : name
+        guard !finalName.isEmpty else { return }
+        
+        self.userName = finalName
+        UserDefaults.standard.set(finalName, forKey: "userName")
         
         db.collection("users").document(userID).setData([
-            "name": name,
+            "name": finalName,
             "email": userEmail,
             "updatedAt": FieldValue.serverTimestamp()
         ], merge: true)
         
         // Also update in leaderboard
         db.collection("leaderboard").document(userID).setData([
-            "name": name,
+            "name": finalName,
             "updatedAt": FieldValue.serverTimestamp()
         ], merge: true)
     }
@@ -263,36 +307,45 @@ class AuthManager: ObservableObject {
         }
     }
     
-    // MARK: - Anonymous Sign In
-        func signInAnonymously() {
-            isLoading = true
+    // MARK: - Anonymous Sign In - FIX #2: присваиваем имя Guest
+    func signInAnonymously() {
+        isLoading = true
+        
+        Auth.auth().signInAnonymously { [weak self] authResult, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+            }
             
-            Auth.auth().signInAnonymously { [weak self] authResult, error in
-                DispatchQueue.main.async {
-                    self?.isLoading = false
-                }
-                
-                if let error = error {
-                    print("Anonymous auth error: \(error.localizedDescription)")
-                    return
-                }
-                
-                guard let firebaseUser = authResult?.user else { return }
-                
-                DispatchQueue.main.async {
-                    self?.signIn(
-                        userID: firebaseUser.uid,
-                        name: "Guest",
-                        email: "",
-                        provider: "anonymous"
-                    )
-                }
+            if let error = error {
+                print("Anonymous auth error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let firebaseUser = authResult?.user else { return }
+            
+            DispatchQueue.main.async {
+                // FIX #2: Генерируем уникальное имя Guest N
+                self?.signIn(
+                    userID: firebaseUser.uid,
+                    name: "", // Будет сгенерировано
+                    email: "",
+                    provider: "anonymous"
+                )
             }
         }
+    }
     
     // MARK: - Email Register
     func registerWithEmail(email: String, password: String, name: String, completion: @escaping (String?) -> Void) {
         isLoading = true
+        
+        // FIX #2: Проверяем, что имя не пустое
+        let finalName = name.trimmingCharacters(in: .whitespaces)
+        guard !finalName.isEmpty else {
+            isLoading = false
+            completion("Name cannot be empty")
+            return
+        }
         
         Auth.auth().createUser(withEmail: email, password: password) { [weak self] authResult, error in
             DispatchQueue.main.async {
@@ -312,12 +365,12 @@ class AuthManager: ObservableObject {
             DispatchQueue.main.async {
                 self?.signIn(
                     userID: firebaseUser.uid,
-                    name: name,
+                    name: finalName,
                     email: firebaseUser.email ?? email,
                     provider: "email"
                 )
                 // Save name to Firestore
-                self?.saveUserNameToFirestore(name)
+                self?.saveUserNameToFirestore(finalName)
                 completion(nil)
             }
         }

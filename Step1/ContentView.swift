@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var authManager = AuthManager()
     @StateObject private var healthManager = HealthManager()
     @StateObject private var leaderboardManager = LeaderboardManager()
+    @StateObject private var groupManager = GroupManager() // NEW: Group Manager
     @State private var selectedTab = 0
     @State private var selectedPeriod = 0
     @State private var currentDate = Date()
@@ -29,6 +30,7 @@ struct ContentView: View {
                     authManager: authManager,
                     healthManager: healthManager,
                     leaderboardManager: leaderboardManager,
+                    groupManager: groupManager, // NEW: pass groupManager
                     selectedTab: $selectedTab,
                     selectedPeriod: $selectedPeriod,
                     currentDate: $currentDate,
@@ -58,6 +60,7 @@ struct ContentView: View {
             if isAuth && !authManager.userID.isEmpty {
                 isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(authManager.userID)")
                 selectedTab = 0 // Always show Main tab after login
+                groupManager.loadUserGroups() // NEW: reload groups on auth change
             }
         }
         .onChange(of: authManager.userID) { _, userID in
@@ -72,6 +75,7 @@ struct MainAppView: View {
     @ObservedObject var authManager: AuthManager
     @ObservedObject var healthManager: HealthManager
     @ObservedObject var leaderboardManager: LeaderboardManager
+    @ObservedObject var groupManager: GroupManager // NEW: Group Manager
     @Binding var selectedTab: Int
     @Binding var selectedPeriod: Int
     @Binding var currentDate: Date
@@ -153,7 +157,12 @@ struct MainAppView: View {
                     lastDate = currentDate
                 }
             } else if selectedTab == 1 {
-                TopLeaderboardView(leaderboardManager: leaderboardManager, authManager: authManager)
+                // NEW: Pass groupManager to TopLeaderboardView
+                TopLeaderboardView(
+                    leaderboardManager: leaderboardManager,
+                    authManager: authManager,
+                    groupManager: groupManager
+                )
             } else if selectedTab == 2 {
                 SettingsView(authManager: authManager, healthManager: healthManager, leaderboardManager: leaderboardManager)
             }

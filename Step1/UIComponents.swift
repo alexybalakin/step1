@@ -98,24 +98,19 @@ struct OnboardingView: View {
                                     HStack {
                                         Text("\(goal.formatted()) steps")
                                             .font(.system(size: 17, weight: .semibold))
-                                            .foregroundColor(.white)
+                                            .foregroundColor(selectedGoal == goal && !showCustomInput ? .black : .white)
                                         
                                         Spacer()
                                         
                                         if selectedGoal == goal && !showCustomInput {
-                                            Image(systemName: "checkmark")
-                                                .foregroundColor(Color(hex: "34C759"))
-                                                .font(.system(size: 16, weight: .semibold))
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.black)
                                         }
                                     }
                                     .padding(.horizontal, 20)
                                     .frame(height: 56)
-                                    .background(Color(hex: "1A1A1C"))
+                                    .background(selectedGoal == goal && !showCustomInput ? Color(hex: "34C759") : Color(hex: "1A1A1C"))
                                     .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(selectedGoal == goal && !showCustomInput ? Color(hex: "34C759") : Color.clear, lineWidth: 2)
-                                    )
                                 }
                             }
                             
@@ -144,9 +139,8 @@ struct OnboardingView: View {
                                     Button(action: {
                                         isCustomInputFocused = false
                                     }) {
-                                        Image(systemName: "checkmark")
+                                        Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(Color(hex: "34C759"))
-                                            .font(.system(size: 16, weight: .semibold))
                                     }
                                 } else {
                                     Image(systemName: "pencil")
@@ -257,17 +251,16 @@ struct LoginView: View {
                     .frame(height: 50)
                     .cornerRadius(12)
                     
-                    // Sign in with Google - FIX #6: правильная иконка, FIX #8: одинаковый шрифт
+                    // Sign in with Google
                     Button(action: {
                         authManager.signInWithGoogle()
                     }) {
-                        HStack(spacing: 8) {
-                            Image("google_logo")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
+                        HStack(spacing: 12) {
+                            // Google colored logo
+                            GoogleLogo()
+                                .frame(width: 20, height: 20)
                             Text("Sign in with Google")
-                                .font(.system(size: 19, weight: .medium))
+                                .font(.system(size: 17, weight: .medium))
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -278,14 +271,14 @@ struct LoginView: View {
                     .disabled(authManager.isLoading)
                     .opacity(authManager.isLoading ? 0.6 : 1)
                     
-                    // FIX #7: Sign UP with Email (не Sign In)
+                    // Sign in with Email
                     Button(action: {
-                        showEmailRegister = true
+                        showEmailLogin = true
                     }) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 12) {
                             Image(systemName: "envelope.fill")
-                                .font(.system(size: 18))
-                            Text("Sign up with Email")
+                                .font(.system(size: 20))
+                            Text("Sign in with Email")
                                 .font(.system(size: 17, weight: .medium))
                         }
                         .foregroundColor(.white)
@@ -298,33 +291,31 @@ struct LoginView: View {
                                 .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
                         )
                     }
-                    
                     // Continue without registration
+                                        Button(action: {
+                                            authManager.signInAnonymously()
+                                        }) {
+                                            Text("Continue without registration")
+                                                                        .font(.system(size: 17, weight: .medium))
+                                            .foregroundColor(Color(hex: "8E8E93"))
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 50)
+                                            .background(Color(hex: "1A1A1C"))
+                                            .cornerRadius(12)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
+                                            )
+                                        }
+                                        .disabled(authManager.isLoading)
+                                        .opacity(authManager.isLoading ? 0.6 : 1)
+                    // Register link
                     Button(action: {
-                        authManager.signInAnonymously()
+                        showEmailRegister = true
                     }) {
-                        Text("Continue without registration")
-                            .font(.system(size: 17, weight: .medium))
+                        Text("Don't have an account? ")
                             .foregroundColor(Color(hex: "8E8E93"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color(hex: "1A1A1C"))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
-                            )
-                    }
-                    .disabled(authManager.isLoading)
-                    .opacity(authManager.isLoading ? 0.6 : 1)
-                    
-                    // FIX #7: Already have account link (вместо Register)
-                    Button(action: {
-                        showEmailLogin = true
-                    }) {
-                        Text("Already have an account? ")
-                            .foregroundColor(Color(hex: "8E8E93"))
-                        + Text("Sign In")
+                        + Text("Register")
                             .foregroundColor(Color(hex: "34C759"))
                     }
                     .font(.system(size: 15))
@@ -669,28 +660,6 @@ struct SettingsView: View {
                         .padding(.horizontal, 20)
                     
                     VStack(spacing: 0) {
-                        SettingsSectionHeader(title: "NEWS AND SUPPORT")
-                        
-                        VStack(spacing: 0) {
-                            Button(action: {
-                                if let url = URL(string: "https://t.me/steplease") {
-                                    UIApplication.shared.open(url)
-                                }
-                            }) {
-                                SettingsRowContent(
-                                    icon: "paperplane.fill",
-                                    title: "Telegram Channel",
-                                    value: "",
-                                    showChevron: true
-                                )
-                            }
-                        }
-                        .background(Color(hex: "1A1A1C"))
-                        .cornerRadius(12)
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    VStack(spacing: 0) {
                         SettingsSectionHeader(title: "LEGAL")
                         
                         VStack(spacing: 0) {
@@ -789,12 +758,11 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Name Editor View - FIX #2: имя не может быть пустым
+// MARK: - Name Editor View
 struct NameEditorView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var authManager: AuthManager
     @State private var newName = ""
-    @State private var showError = false
     
     var body: some View {
         NavigationView {
@@ -817,21 +785,12 @@ struct NameEditorView: View {
                         .cornerRadius(12)
                         .padding(.horizontal, 40)
                     
-                    if showError {
-                        Text("Name cannot be empty")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(hex: "FF3B30"))
-                    }
-                    
                     Spacer()
                     
                     Button {
-                        let trimmedName = newName.trimmingCharacters(in: .whitespaces)
-                        if !trimmedName.isEmpty {
-                            authManager.saveUserNameToFirestore(trimmedName)
+                        if !newName.trimmingCharacters(in: .whitespaces).isEmpty {
+                            authManager.saveUserNameToFirestore(newName)
                             dismiss()
-                        } else {
-                            showError = true
                         }
                     } label: {
                         Text("Save")
@@ -856,9 +815,6 @@ struct NameEditorView: View {
         }
         .onAppear {
             newName = authManager.userName
-        }
-        .onChange(of: newName) { _, _ in
-            showError = false
         }
     }
 }
@@ -1611,7 +1567,7 @@ struct TabButton: View {
     }
 }
 
-// MARK: - Goal Editor - FIX #3: обводка вместо заливки, добавлена иконка
+// MARK: - Goal Editor (Consistent with onboarding)
 struct GoalEditorView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var goal: Int
@@ -1633,16 +1589,12 @@ struct GoalEditorView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 24) {
-                            // FIX #3: Добавлена иконка для консистентности с онбордингом
-                            Text("🎯")
-                                .font(.system(size: 48))
-                                .padding(.top, 32)
-                            
                             Text("Set your daily step goal")
                                 .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(.white)
+                                .padding(.top, 40)
                             
-                            // Goal options - FIX #3: обводка вместо заливки
+                            // Goal options
                             VStack(spacing: 12) {
                                 ForEach(goalOptions, id: \.self) { goalValue in
                                     Button(action: {
@@ -1654,24 +1606,19 @@ struct GoalEditorView: View {
                                         HStack {
                                             Text("\(goalValue.formatted()) steps")
                                                 .font(.system(size: 17, weight: .semibold))
-                                                .foregroundColor(.white)
+                                                .foregroundColor(selectedGoal == goalValue && !showCustomInput ? .black : .white)
                                             
                                             Spacer()
                                             
                                             if selectedGoal == goalValue && !showCustomInput {
-                                                Image(systemName: "checkmark")
-                                                    .foregroundColor(Color(hex: "34C759"))
-                                                    .font(.system(size: 16, weight: .semibold))
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(.black)
                                             }
                                         }
                                         .padding(.horizontal, 20)
                                         .frame(height: 56)
-                                        .background(Color(hex: "1A1A1C"))
+                                        .background(selectedGoal == goalValue && !showCustomInput ? Color(hex: "34C759") : Color(hex: "1A1A1C"))
                                         .cornerRadius(12)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(selectedGoal == goalValue && !showCustomInput ? Color(hex: "34C759") : Color.clear, lineWidth: 2)
-                                        )
                                     }
                                 }
                                 
@@ -1700,9 +1647,8 @@ struct GoalEditorView: View {
                                         Button(action: {
                                             isCustomInputFocused = false
                                         }) {
-                                            Image(systemName: "checkmark")
+                                            Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(Color(hex: "34C759"))
-                                                .font(.system(size: 16, weight: .semibold))
                                         }
                                     } else {
                                         Image(systemName: "pencil")
@@ -1796,18 +1742,15 @@ struct QuickGoalButton: View {
     }
 }
 
-// MARK: - Top Leaderboard View - FIX #9 (анонимные не видят), FIX #10 (pull to refresh)
+// MARK: - Top Leaderboard View
 struct TopLeaderboardView: View {
     @ObservedObject var leaderboardManager: LeaderboardManager
     @ObservedObject var authManager: AuthManager
+    @ObservedObject var groupManager: GroupManager // NEW: Group Manager
     @State private var selectedUser: LeaderboardUser?
     @State private var showMyProfile = false
-    @State private var isRefreshing = false
-    
-    // FIX #9: Проверяем, залогинен ли пользователь (не анонимный)
-    var isLoggedIn: Bool {
-        authManager.authProvider != "anonymous" && !authManager.authProvider.isEmpty
-    }
+    @State private var selectedTab: GroupTab = .all // NEW: Track selected tab
+    @State private var showGroupDetail: CustomGroup? = nil // NEW: For group detail sheet
     
     var canGoForward: Bool {
         let calendar = Calendar.current
@@ -1852,209 +1795,143 @@ struct TopLeaderboardView: View {
             Color(hex: "0A0A0A")
                 .ignoresSafeArea()
             
-            // FIX #9: Показываем приглашение войти для анонимных
-            if !isLoggedIn {
-                VStack(spacing: 24) {
-                    Spacer()
-                    
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(Color(hex: "34C759"))
-                    
-                    Text("Join the Leaderboard")
+            VStack(spacing: 0) {
+                // Header - 32px from safe area
+                HStack {
+                    Text("Leaderboard")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
                     
-                    Text("Sign in to compete with friends and see your ranking")
-                        .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                    
-                    Button {
-                        authManager.signOut()
-                    } label: {
-                        Text("Sign In")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color(hex: "34C759"))
-                            .cornerRadius(12)
-                    }
-                    .padding(.horizontal, 40)
-                    
                     Spacer()
+                    
+                    // Profile button
+                    Button(action: {
+                        showMyProfile = true
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "34C759"))
+                                .frame(width: 40, height: 40)
+                            
+                            Text(String(authManager.userName.prefix(1).uppercased()))
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.black)
+                        }
+                    }
                 }
-            } else {
-                VStack(spacing: 0) {
-                    // Header - 32px from safe area
-                    HStack {
-                        Text("Leaderboard")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        // Profile button
-                        Button(action: {
-                            showMyProfile = true
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color(hex: "34C759"))
-                                    .frame(width: 40, height: 40)
-                                
-                                Text(String(authManager.userName.prefix(1).uppercased()))
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.black)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 32)
-                    
-                    // First row: Date selector + Period selector - 32px below header
-                    HStack(spacing: 8) {
-                        // Date selector - fixed width
-                        HStack(spacing: 0) {
-                            Button(action: { changeDate(by: -1) }) {
-                                Image(systemName: "chevron.left")
-                                    .foregroundColor(.white)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .frame(width: 28, height: 32)
-                            }
-                            
-                            Text(dateString)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 56)
-                            
-                            Button(action: { changeDate(by: 1) }) {
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .frame(width: 28, height: 32)
-                            }
-                            .disabled(!canGoForward)
-                        }
-                        .frame(height: 32)
-                        .background(Color(hex: "1A1A1C"))
-                        .cornerRadius(8)
-                        
-                        // Period selector - fills remaining space
-                        HStack(spacing: 0) {
-                            ForEach(["DAY", "WEEK", "MONTH"], id: \.self) { period in
-                                let index = period == "DAY" ? 0 : (period == "WEEK" ? 1 : 2)
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        leaderboardManager.selectedPeriod = index
-                                        leaderboardManager.refresh()
-                                    }
-                                }) {
-                                    Text(period)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(leaderboardManager.selectedPeriod == index ? .white : Color(hex: "8E8E93"))
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 32)
-                                        .background(
-                                            leaderboardManager.selectedPeriod == index ?
-                                            Color(hex: "3A3A3C") : Color.clear
-                                        )
-                                        .cornerRadius(8)
-                                }
-                            }
-                        }
-                        .background(Color(hex: "1A1A1C"))
-                        .cornerRadius(8)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 32)
-                    
-                    // Second row: All / Friends selector - 16px below, full width
+                .padding(.horizontal, 20)
+                .padding(.top, 32)
+                
+                // First row: Date selector + Period selector - 32px below header
+                HStack(spacing: 8) {
+                    // Date selector - fixed width
                     HStack(spacing: 0) {
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                leaderboardManager.showFriendsOnly = false
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Text("ALL")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("(\(leaderboardManager.users.count))")
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundColor(Color(hex: "8E8E93"))
-                            }
-                            .foregroundColor(!leaderboardManager.showFriendsOnly ? .white : Color(hex: "8E8E93"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .background(
-                                !leaderboardManager.showFriendsOnly ?
-                                Color(hex: "3A3A3C") : Color.clear
-                            )
-                            .cornerRadius(8)
+                        Button(action: { changeDate(by: -1) }) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.white)
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 28, height: 32)
                         }
                         
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                leaderboardManager.showFriendsOnly = true
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Text("FRIENDS")
+                        Text(dateString)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 56)
+                        
+                        Button(action: { changeDate(by: 1) }) {
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 28, height: 32)
+                        }
+                        .disabled(!canGoForward)
+                    }
+                    .frame(height: 32)
+                    .background(Color(hex: "1A1A1C"))
+                    .cornerRadius(8)
+                    
+                    // Period selector - fills remaining space
+                    HStack(spacing: 0) {
+                        ForEach(["DAY", "WEEK", "MONTH"], id: \.self) { period in
+                            let index = period == "DAY" ? 0 : (period == "WEEK" ? 1 : 2)
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    leaderboardManager.selectedPeriod = index
+                                    leaderboardManager.refresh()
+                                }
+                            }) {
+                                Text(period)
                                     .font(.system(size: 12, weight: .semibold))
-                                Text("(\(leaderboardManager.friends.count))")
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundColor(Color(hex: "8E8E93"))
+                                    .foregroundColor(leaderboardManager.selectedPeriod == index ? .white : Color(hex: "8E8E93"))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 32)
+                                    .background(
+                                        leaderboardManager.selectedPeriod == index ?
+                                        Color(hex: "3A3A3C") : Color.clear
+                                    )
+                                    .cornerRadius(8)
                             }
-                            .foregroundColor(leaderboardManager.showFriendsOnly ? .white : Color(hex: "8E8E93"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .background(
-                                leaderboardManager.showFriendsOnly ?
-                                Color(hex: "3A3A3C") : Color.clear
-                            )
-                            .cornerRadius(8)
                         }
                     }
                     .background(Color(hex: "1A1A1C"))
                     .cornerRadius(8)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    
-                    // List - FIX #10: с pull to refresh
-                    if leaderboardManager.isLoading && !isRefreshing {
-                        Spacer()
-                        ProgressView()
-                            .tint(.white)
-                        Spacer()
-                    } else if leaderboardManager.filteredUsers.isEmpty {
-                        Spacer()
-                        Text(leaderboardManager.showFriendsOnly ? "No friends yet" : "No users yet")
-                            .font(.system(size: 17))
-                            .foregroundColor(Color(hex: "8E8E93"))
-                        if leaderboardManager.showFriendsOnly {
-                            Text("Add friends from the leaderboard")
-                                .font(.system(size: 15))
-                                .foregroundColor(Color(hex: "8E8E93"))
-                                .padding(.top, 8)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 32)
+                
+                // NEW: Scrollable tabs - ALL | FRIENDS | Groups | +
+                GroupTabSelector(
+                    leaderboardManager: leaderboardManager,
+                    groupManager: groupManager,
+                    selectedTab: $selectedTab
+                )
+                .padding(.top, 16)
+                
+                // List content based on selected tab
+                if leaderboardManager.isLoading {
+                    Spacer()
+                    ProgressView()
+                        .tint(.white)
+                    Spacer()
+                } else {
+                    switch selectedTab {
+                    case .all:
+                        if leaderboardManager.users.isEmpty {
+                            emptyStateView(message: "No users yet")
+                        } else {
+                            LeaderboardList(leaderboardManager: leaderboardManager, onUserTap: { user in
+                                selectedUser = user
+                            })
+                            .padding(.top, 32)
                         }
-                        Spacer()
-                    } else {
-                                        ZStack(alignment: .bottomTrailing) {
-                                            LeaderboardList(leaderboardManager: leaderboardManager, onUserTap: { user in
-                                                selectedUser = user
-                                            })
-                                            .padding(.top, 32)
-                                            
-                                            // Compact invite button for Friends tab
-                                            if leaderboardManager.showFriendsOnly {
-                                                CompactInviteButton()
-                                                    .padding(.trailing, 20)
-                                                    .padding(.bottom, 100)
-                                            }
-                                        }
-                                    }
+                        
+                    case .friends:
+                        if leaderboardManager.filteredUsers.isEmpty {
+                            emptyStateView(message: "No friends yet", subtitle: "Add friends from the leaderboard")
+                        } else {
+                            ZStack(alignment: .bottomTrailing) {
+                                LeaderboardList(leaderboardManager: leaderboardManager, onUserTap: { user in
+                                    selectedUser = user
+                                })
+                                .padding(.top, 32)
+                                
+                                CompactInviteButton()
+                                    .padding(.trailing, 20)
+                                    .padding(.bottom, 100)
+                            }
+                        }
+                        
+                    case .group(let groupId):
+                        if let group = groupManager.userGroups.first(where: { $0.id == groupId }) {
+                            GroupLeaderboardView(
+                                group: group,
+                                groupManager: groupManager,
+                                leaderboardManager: leaderboardManager,
+                                onUserTap: { user in selectedUser = user },
+                                onGroupTap: { showGroupDetail = group }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2064,20 +1941,35 @@ struct TopLeaderboardView: View {
         .sheet(isPresented: $showMyProfile) {
             MyProfileView(authManager: authManager, leaderboardManager: leaderboardManager)
         }
-        .onAppear {
-            // FIX #10: Обновляем дату на сегодня при появлении
-            leaderboardManager.selectedDate = Date()
-            leaderboardManager.refresh()
+        .sheet(item: $showGroupDetail) { group in
+            GroupDetailsSheet(group: group, groupManager: groupManager, leaderboardManager: leaderboardManager)
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            // Update leaderboardManager.showFriendsOnly based on tab
+            switch newTab {
+            case .all:
+                leaderboardManager.showFriendsOnly = false
+            case .friends:
+                leaderboardManager.showFriendsOnly = true
+            case .group:
+                leaderboardManager.showFriendsOnly = false
+            }
         }
     }
     
-    // FIX #10: Pull to refresh
-    func refreshLeaderboard() async {
-        isRefreshing = true
-        leaderboardManager.selectedDate = Date()
-        leaderboardManager.refresh()
-        try? await Task.sleep(nanoseconds: 500_000_000)
-        isRefreshing = false
+    @ViewBuilder
+    func emptyStateView(message: String, subtitle: String? = nil) -> some View {
+        Spacer()
+        Text(message)
+            .font(.system(size: 17))
+            .foregroundColor(Color(hex: "8E8E93"))
+        if let subtitle = subtitle {
+            Text(subtitle)
+                .font(.system(size: 15))
+                .foregroundColor(Color(hex: "8E8E93"))
+                .padding(.top, 8)
+        }
+        Spacer()
     }
     
     func changeDate(by value: Int) {

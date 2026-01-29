@@ -129,41 +129,17 @@ struct SmallWidgetView: View {
     let entry: StepEntry
     let currentProgress: Double
     
+    private let circleSize: CGFloat = 100
+    private let badgeSize: CGFloat = 16
+    
     var body: some View {
         ZStack {
-            // Checkmark in top right corner when goal reached
-            if entry.goalReached {
-                VStack {
-                    HStack {
-                        Spacer()
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
-                                .frame(width: 16, height: 16)
-                            
-                            if entry.multiplier > 1 {
-                                Text("\(entry.multiplier)x")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(.black)
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(.black)
-                            }
-                        }
-                        .padding(.top, 12)
-                        .padding(.trailing, 12)
-                    }
-                    Spacer()
-                }
-            }
-            
-            // Progress circle - reduced diameter (100 instead of 120)
+            // Progress circle
             ZStack {
                 // Background circle
                 Circle()
                     .stroke(Color(red: 44/255, green: 44/255, blue: 46/255), lineWidth: 8)
-                    .frame(width: 100, height: 100)
+                    .frame(width: circleSize, height: circleSize)
                 
                 // Progress circle
                 if entry.multiplier == 0 {
@@ -173,13 +149,13 @@ struct SmallWidgetView: View {
                             Color(red: 52/255, green: 199/255, blue: 89/255),
                             style: StrokeStyle(lineWidth: 8, lineCap: .round)
                         )
-                        .frame(width: 100, height: 100)
+                        .frame(width: circleSize, height: circleSize)
                         .rotationEffect(.degrees(-90))
                 } else {
                     // Full circle when goal reached
                     Circle()
                         .stroke(Color(red: 52/255, green: 199/255, blue: 89/255), lineWidth: 8)
-                        .frame(width: 100, height: 100)
+                        .frame(width: circleSize, height: circleSize)
                     
                     // Inner progress for multiplier
                     if currentProgress > 0 {
@@ -194,11 +170,31 @@ struct SmallWidgetView: View {
                     }
                 }
                 
-                // Steps text - 18px
+                // Steps text
                 Text("\(entry.steps.formatted())")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
                     .minimumScaleFactor(0.5)
+                
+                // Badge in top right corner, outside the ring
+                if entry.goalReached {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 52/255, green: 199/255, blue: 89/255))
+                            .frame(width: badgeSize, height: badgeSize)
+                        
+                        if entry.multiplier > 1 {
+                            Text("\(entry.multiplier)x")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.black)
+                        } else {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .offset(x: 52, y: -52)
+                }
             }
         }
         .containerBackground(for: .widget) {

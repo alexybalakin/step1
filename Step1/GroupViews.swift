@@ -65,13 +65,17 @@ struct GroupTabSelector: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(Color(hex: "8E8E93"))
                         .frame(width: 40, height: 32)
-                        .background(Color(hex: "1A1A1C"))
+                        .background(Color.clear)
                         .cornerRadius(8)
                 }
                 .padding(.leading, 4)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 0)
         }
+        .background(Color(hex: "1A1A1C"))
+        .cornerRadius(8)
+        .padding(.horizontal, 20)
         .sheet(isPresented: $showCreateGroup) {
             CreateGroupSheet(groupManager: groupManager, showJoinGroup: $showJoinGroup)
         }

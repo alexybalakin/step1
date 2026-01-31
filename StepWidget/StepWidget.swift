@@ -64,9 +64,27 @@ struct StepProvider: TimelineProvider {
                 multiplier: multiplier
             )
             
-            // Update every 5 minutes for better stability
-            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
-            let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
+            // FIX #5: More frequent updates + multiple entries for better stability
+            let calendar = Calendar.current
+            var entries: [StepEntry] = [entry]
+            
+            // Add future entries every 5 minutes for the next 30 minutes
+            for minuteOffset in stride(from: 5, through: 30, by: 5) {
+                if let futureDate = calendar.date(byAdding: .minute, value: minuteOffset, to: Date()) {
+                    entries.append(StepEntry(
+                        date: futureDate,
+                        steps: steps,
+                        goal: actualGoal,
+                        progress: progress,
+                        goalReached: goalReached,
+                        multiplier: multiplier
+                    ))
+                }
+            }
+            
+            // Request update after the last entry
+            let nextUpdate = calendar.date(byAdding: .minute, value: 5, to: Date())!
+            let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
             completion(timeline)
         }
     }
@@ -78,24 +96,38 @@ struct StepProvider: TimelineProvider {
         }
         
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfDay = calendar.startOfDay(for: now)
         
-        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
-        
-        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
-            DispatchQueue.main.async {
-                guard let result = result, let sum = result.sumQuantity() else {
-                    completion(0)
-                    return
-                }
-                let steps = Int(sum.doubleValue(for: HKUnit.count()))
-                completion(steps)
+        // FIX #5: Request authorization first (needed for widget extension)
+        healthStore.requestAuthorization(toShare: nil, read: [stepType]) { success, error in
+            guard success else {
+                DispatchQueue.main.async { completion(0) }
+                return
             }
+            
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfDay = calendar.startOfDay(for: now)
+            
+            let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                DispatchQueue.main.async {
+                    guard let result = result, let sum = result.sumQuantity() else {
+                        // FIX #5: Fall back to cached value instead of 0
+                        let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
+                        completion(cached)
+                        return
+                    }
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    // FIX #5: Cache steps for fallback
+                    UserDefaults(suiteName: "group.alex.Step1")?.set(steps, forKey: "lastKnownSteps")
+                    UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
+                    completion(steps)
+                }
+            }
+            
+            self.healthStore.execute(query)
         }
-        
-        healthStore.execute(query)
     }
 }
 

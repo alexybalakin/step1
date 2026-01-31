@@ -181,7 +181,12 @@ class LeaderboardManager: ObservableObject {
     
     // MARK: - Update Current User Steps
     func updateCurrentUserSteps(_ steps: Int, name: String) {
-        guard Auth.auth().currentUser != nil else {
+        guard let currentUser = Auth.auth().currentUser else {
+            return
+        }
+        
+        // FIX #9: Don't sync anonymous users to leaderboard
+        if currentUser.isAnonymous {
             return
         }
         
@@ -273,7 +278,10 @@ class LeaderboardManager: ObservableObject {
     
     // MARK: - Sync historical steps from HealthKit to Firestore
     func syncHistoricalSteps(steps: [String: Int], name: String) {
-        guard Auth.auth().currentUser != nil else { return }
+        guard let currentUser = Auth.auth().currentUser else { return }
+        
+        // FIX #9: Don't sync anonymous users
+        if currentUser.isAnonymous { return }
         
         // FIX #2: Проверяем имя
         var finalName = name

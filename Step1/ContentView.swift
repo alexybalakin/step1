@@ -95,7 +95,7 @@ struct MainAppView: View {
                         currentDate: $currentDate,
                         healthManager: healthManager
                     )
-                    .padding(.top, 20)
+                    .padding(.top, 8)
                     
                     ScrollView {
                         VStack(spacing: 12) {
@@ -157,13 +157,21 @@ struct MainAppView: View {
                     lastDate = currentDate
                 }
             } else if selectedTab == 1 {
-                // NEW: Pass groupManager to TopLeaderboardView
-                TopLeaderboardView(
-                    leaderboardManager: leaderboardManager,
-                    authManager: authManager,
-                    groupManager: groupManager
-                )
+                // Leaderboard - only for logged in users
+                if authManager.isAnonymous {
+                    LeaderboardLockedView(authManager: authManager)
+                } else {
+                    TopLeaderboardView(
+                        leaderboardManager: leaderboardManager,
+                        authManager: authManager,
+                        groupManager: groupManager
+                    )
+                }
             } else if selectedTab == 2 {
+                // Awards (placeholder for now)
+                AwardsView()
+            } else if selectedTab == 3 {
+                // Settings
                 SettingsView(authManager: authManager, healthManager: healthManager, leaderboardManager: leaderboardManager)
             }
             

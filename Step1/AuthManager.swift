@@ -20,10 +20,17 @@ class AuthManager: ObservableObject {
     @Published var isLoading = false
     @Published var authProvider: String = "" // "apple", "google", "email", or "anonymous"
     
+    // MARK: - FIX #9: Check if user is anonymous
+    var isAnonymous: Bool {
+        return authProvider == "anonymous" || Auth.auth().currentUser?.isAnonymous == true
+    }
+    
     private let db = Firestore.firestore()
     
     init() {
         checkAuthStatus()
+        // FIX #2: Fix existing duplicate names on app launch
+        fixDuplicateNames()
     }
     
     // MARK: - Check saved auth status
@@ -131,20 +138,106 @@ class AuthManager: ObservableObject {
         let finalName = name.trimmingCharacters(in: .whitespaces).isEmpty ? userName : name
         guard !finalName.isEmpty else { return }
         
-        self.userName = finalName
-        UserDefaults.standard.set(finalName, forKey: "userName")
-        
-        db.collection("users").document(userID).setData([
-            "name": finalName,
-            "email": userEmail,
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-        
-        // Also update in leaderboard
-        db.collection("leaderboard").document(userID).setData([
-            "name": finalName,
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        // FIX #1: Check name uniqueness before saving
+        checkNameUniqueness(name: finalName, forUserID: userID) { [weak self] uniqueName in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                self.userName = uniqueName
+                UserDefaults.standard.set(uniqueName, forKey: "userName")
+            }
+            
+            self.db.collection("users").document(self.userID).setData([
+                "name": uniqueName,
+                "email": self.userEmail,
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            
+            // Also update in leaderboard
+            self.db.collection("leaderboard").document(self.userID).setData([
+                "name": uniqueName,
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        }
+    }
+    
+    // MARK: - FIX #1: Check name uniqueness
+    func checkNameUniqueness(name: String, forUserID uid: String, completion: @escaping (String) -> Void) {
+        db.collection("leaderboard").whereField("name", isEqualTo: name).getDocuments { snapshot, error in
+            guard let documents = snapshot?.documents else {
+                completion(name)
+                return
+            }
+            
+            // Filter out the current user's document
+            let otherUsersWithSameName = documents.filter { $0.documentID != uid }
+            
+            if otherUsersWithSameName.isEmpty {
+                // Name is unique
+                completion(name)
+            } else {
+                // Name already taken — find next available suffix
+                self.db.collection("leaderboard").getDocuments { allSnapshot, _ in
+                    guard let allDocs = allSnapshot?.documents else {
+                        completion(name)
+                        return
+                    }
+                    
+                    let allNames = Set(allDocs.filter { $0.documentID != uid }.compactMap { $0.data()["name"] as? String })
+                    
+                    var suffix = 2
+                    var candidate = "\(name) \(suffix)"
+                    while allNames.contains(candidate) {
+                        suffix += 1
+                        candidate = "\(name) \(suffix)"
+                    }
+                    completion(candidate)
+                }
+            }
+        }
+    }
+    
+    // MARK: - FIX #2: Fix existing duplicate names in Firestore (run once)
+    func fixDuplicateNames() {
+        db.collection("leaderboard").getDocuments { [weak self] snapshot, error in
+            guard let self = self, let documents = snapshot?.documents else { return }
+            
+            // Group documents by name
+            var nameGroups: [String: [(id: String, data: [String: Any])]] = [:]
+            for doc in documents {
+                let name = (doc.data()["name"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+                if name.isEmpty { continue }
+                nameGroups[name, default: []].append((id: doc.documentID, data: doc.data()))
+            }
+            
+            // For each group with duplicates, rename extras
+            var allUsedNames = Set(nameGroups.keys)
+            
+            for (name, group) in nameGroups where group.count > 1 {
+                // Keep the first user's name, rename the rest
+                for i in 1..<group.count {
+                    var suffix = 2
+                    var newName = "\(name) \(suffix)"
+                    while allUsedNames.contains(newName) {
+                        suffix += 1
+                        newName = "\(name) \(suffix)"
+                    }
+                    allUsedNames.insert(newName)
+                    
+                    let docID = group[i].id
+                    self.db.collection("leaderboard").document(docID).updateData(["name": newName])
+                    self.db.collection("users").document(docID).updateData(["name": newName])
+                    
+                    // If it's the current user, update locally too
+                    if docID == self.userID {
+                        DispatchQueue.main.async {
+                            self.userName = newName
+                            UserDefaults.standard.set(newName, forKey: "userName")
+                        }
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Handle Sign in with Apple

@@ -68,10 +68,57 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         healthStore.requestAuthorization(toShare: nil, read: typesToRead) { success, error in
             if success {
                 self.loadDataForCurrentDate()
+                // FIX #5: Enable background delivery for steps
+                self.enableBackgroundDelivery()
+                // FIX #5: Start observing step changes for real-time updates
+                self.startObservingSteps()
             }
         }
         
         locationManager.requestWhenInUseAuthorization()
+    }
+    
+    // MARK: - FIX #5: Enable background delivery for widget updates
+    private func enableBackgroundDelivery() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        
+        healthStore.enableBackgroundDelivery(for: stepType, frequency: .immediate) { success, error in
+            if let error = error {
+                print("Background delivery error: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    // MARK: - FIX #5: Observe step changes in real-time
+    private var stepObserverQuery: HKObserverQuery?
+    
+    private func startObservingSteps() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        
+        // Remove existing observer if any
+        if let existing = stepObserverQuery {
+            healthStore.stop(existing)
+        }
+        
+        let query = HKObserverQuery(sampleType: stepType, predicate: nil) { [weak self] _, completionHandler, error in
+            guard error == nil else {
+                completionHandler()
+                return
+            }
+            
+            // Re-fetch steps when HealthKit data changes
+            DispatchQueue.main.async {
+                self?.fetchStepsForDate(self?.currentDate ?? Date())
+            }
+            
+            // Reload widget timeline
+            WidgetCenter.shared.reloadAllTimelines()
+            
+            completionHandler()
+        }
+        
+        stepObserverQuery = query
+        healthStore.execute(query)
     }
     
     func loadDataForCurrentDate() {
@@ -103,6 +150,14 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             DispatchQueue.main.async {
                 self.steps = Int(sum.doubleValue(for: HKUnit.count()))
                 self.goalReached = self.steps >= self.dailyGoal
+                
+                // FIX #5: Cache current steps for widget fallback
+                if Calendar.current.isDateInToday(date) {
+                    UserDefaults(suiteName: "group.alex.Step1")?.set(self.steps, forKey: "lastKnownSteps")
+                    UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
+                    // Trigger widget update
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
             }
         }
         

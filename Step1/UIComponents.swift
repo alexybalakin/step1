@@ -98,19 +98,24 @@ struct OnboardingView: View {
                                     HStack {
                                         Text("\(goal.formatted()) steps")
                                             .font(.system(size: 17, weight: .semibold))
-                                            .foregroundColor(selectedGoal == goal && !showCustomInput ? .black : .white)
+                                            .foregroundColor(.white)
                                         
                                         Spacer()
                                         
                                         if selectedGoal == goal && !showCustomInput {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.black)
+                                            Image(systemName: "checkmark")
+                                                .foregroundColor(Color(hex: "34C759"))
+                                                .font(.system(size: 14, weight: .bold))
                                         }
                                     }
                                     .padding(.horizontal, 20)
                                     .frame(height: 56)
-                                    .background(selectedGoal == goal && !showCustomInput ? Color(hex: "34C759") : Color(hex: "1A1A1C"))
+                                    .background(Color(hex: "1A1A1C"))
                                     .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(selectedGoal == goal && !showCustomInput ? Color(hex: "34C759") : Color.clear, lineWidth: 1.5)
+                                    )
                                 }
                             }
                             
@@ -240,6 +245,7 @@ struct LoginView: View {
                 VStack(spacing: 12) {
                     // Sign in with Apple
                     SignInWithAppleButton(
+                        .signUp,
                         onRequest: { request in
                             request.requestedScopes = [.fullName, .email]
                         },
@@ -255,12 +261,12 @@ struct LoginView: View {
                     Button(action: {
                         authManager.signInWithGoogle()
                     }) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 8) {
                             // Google colored logo
                             GoogleLogo()
-                                .frame(width: 20, height: 20)
-                            Text("Sign in with Google")
-                                .font(.system(size: 17, weight: .medium))
+                                .frame(width: 17, height: 17)
+                            Text("Sign up with Google")
+                                .font(.system(size: 16.5, weight: .regular))
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -271,15 +277,15 @@ struct LoginView: View {
                     .disabled(authManager.isLoading)
                     .opacity(authManager.isLoading ? 0.6 : 1)
                     
-                    // Sign in with Email
+                    // Sign up with Email
                     Button(action: {
-                        showEmailLogin = true
+                        showEmailRegister = true
                     }) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 8) {
                             Image(systemName: "envelope.fill")
-                                .font(.system(size: 20))
-                            Text("Sign in with Email")
-                                .font(.system(size: 17, weight: .medium))
+                                .font(.system(size: 15))
+                            Text("Sign up with Email")
+                                .font(.system(size: 16.5, weight: .regular))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -292,30 +298,30 @@ struct LoginView: View {
                         )
                     }
                     // Continue without registration
-                                        Button(action: {
-                                            authManager.signInAnonymously()
-                                        }) {
-                                            Text("Continue without registration")
-                                                                        .font(.system(size: 17, weight: .medium))
-                                            .foregroundColor(Color(hex: "8E8E93"))
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 50)
-                                            .background(Color(hex: "1A1A1C"))
-                                            .cornerRadius(12)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
-                                            )
-                                        }
+                    Button(action: {
+                        authManager.signInAnonymously()
+                    }) {
+                        Text("Continue without registration")
+                            .font(.system(size: 16.5, weight: .regular))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(hex: "1A1A1C"))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
+                            )
+                    }
                                         .disabled(authManager.isLoading)
                                         .opacity(authManager.isLoading ? 0.6 : 1)
-                    // Register link
+                    // Sign in link
                     Button(action: {
-                        showEmailRegister = true
+                        showEmailLogin = true
                     }) {
-                        Text("Don't have an account? ")
+                        Text("Already have an account? ")
                             .foregroundColor(Color(hex: "8E8E93"))
-                        + Text("Register")
+                        + Text("Sign In")
                             .foregroundColor(Color(hex: "34C759"))
                     }
                     .font(.system(size: 15))
@@ -535,49 +541,12 @@ struct DarkTextFieldStyle: TextFieldStyle {
     }
 }
 
-// MARK: - Google Logo (colored)
+// MARK: - Google Logo (from Assets)
 struct GoogleLogo: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.white)
-            
-            GeometryReader { geo in
-                let size = min(geo.size.width, geo.size.height)
-                let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-                let radius = size * 0.4
-                
-                // Blue arc (right)
-                Path { path in
-                    path.addArc(center: center, radius: radius, startAngle: .degrees(-45), endAngle: .degrees(45), clockwise: false)
-                }
-                .stroke(Color(red: 66/255, green: 133/255, blue: 244/255), lineWidth: size * 0.15)
-                
-                // Green arc (bottom)
-                Path { path in
-                    path.addArc(center: center, radius: radius, startAngle: .degrees(45), endAngle: .degrees(135), clockwise: false)
-                }
-                .stroke(Color(red: 52/255, green: 168/255, blue: 83/255), lineWidth: size * 0.15)
-                
-                // Yellow arc (left-bottom)
-                Path { path in
-                    path.addArc(center: center, radius: radius, startAngle: .degrees(135), endAngle: .degrees(180), clockwise: false)
-                }
-                .stroke(Color(red: 251/255, green: 188/255, blue: 5/255), lineWidth: size * 0.15)
-                
-                // Red arc (top)
-                Path { path in
-                    path.addArc(center: center, radius: radius, startAngle: .degrees(180), endAngle: .degrees(315), clockwise: false)
-                }
-                .stroke(Color(red: 234/255, green: 67/255, blue: 53/255), lineWidth: size * 0.15)
-                
-                // Blue horizontal bar
-                Rectangle()
-                    .fill(Color(red: 66/255, green: 133/255, blue: 244/255))
-                    .frame(width: size * 0.35, height: size * 0.15)
-                    .position(x: center.x + size * 0.1, y: center.y)
-            }
-        }
+        Image("google_logo")
+            .resizable()
+            .scaledToFit()
     }
 }
 
@@ -658,6 +627,28 @@ struct SettingsView: View {
                     // Invite Friend Card
                     InviteFriendCard()
                         .padding(.horizontal, 20)
+                    
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "NEWS & SUPPORT")
+                        
+                        VStack(spacing: 0) {
+                            Button(action: {
+                                if let url = URL(string: "https://t.me/steplease") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                SettingsRowContent(
+                                    icon: "paperplane.fill",
+                                    title: "Telegram Channel",
+                                    value: "",
+                                    showChevron: true
+                                )
+                            }
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
                     
                     VStack(spacing: 0) {
                         SettingsSectionHeader(title: "LEGAL")
@@ -763,6 +754,8 @@ struct NameEditorView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var authManager: AuthManager
     @State private var newName = ""
+    @State private var nameError: String?
+    @State private var isChecking = false
     
     var body: some View {
         NavigationView {
@@ -775,32 +768,66 @@ struct NameEditorView: View {
                         .foregroundColor(.white)
                         .padding(.top, 40)
                     
-                    TextField("Name", text: $newName)
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .frame(height: 60)
-                        .background(Color(hex: "1A1A1C"))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 40)
+                    VStack(spacing: 8) {
+                        TextField("Name", text: $newName)
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                            .frame(height: 60)
+                            .background(Color(hex: "1A1A1C"))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 40)
+                            .onChange(of: newName) { _, _ in
+                                nameError = nil
+                            }
+                        
+                        if let error = nameError {
+                            Text(error)
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(red: 1, green: 0.27, blue: 0.23))
+                                .padding(.horizontal, 40)
+                        }
+                    }
                     
                     Spacer()
                     
                     Button {
-                        if !newName.trimmingCharacters(in: .whitespaces).isEmpty {
-                            authManager.saveUserNameToFirestore(newName)
-                            dismiss()
+                        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        
+                        // FIX #1: Check uniqueness before saving
+                        isChecking = true
+                        nameError = nil
+                        authManager.checkNameUniqueness(name: trimmed, forUserID: authManager.userID) { uniqueName in
+                            DispatchQueue.main.async {
+                                isChecking = false
+                                if uniqueName != trimmed {
+                                    // Name was taken
+                                    nameError = "This name is already taken"
+                                } else {
+                                    authManager.saveUserNameToFirestore(trimmed)
+                                    dismiss()
+                                }
+                            }
                         }
                     } label: {
-                        Text("Save")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color(hex: "34C759"))
-                            .cornerRadius(12)
+                        HStack(spacing: 8) {
+                            if isChecking {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            }
+                            Text("Save")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(hex: "34C759"))
+                        .cornerRadius(12)
                     }
+                    .disabled(isChecking)
                     .padding(.horizontal, 40)
                     .padding(.bottom, 40)
                 }
@@ -1037,37 +1064,122 @@ struct TopNavigationView: View {
     
     var body: some View {
         HStack(spacing: 0) {
+            // Left - Profile button
             Button(action: {
-                changeDate(by: -1)
+                // Profile action - placeholder
             }) {
-                Image(systemName: "chevron.left")
-                    .foregroundColor(.white)
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 32, height: 28)
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "0A0A0A").opacity(0.95))
+                    
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.25), location: 0),
+                                    .init(color: Color.white.opacity(0.1), location: 0.5),
+                                    .init(color: Color.white.opacity(0.02), location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 44, height: 44)
             }
             
-            Button(action: {
-                showCalendar = true
-            }) {
-                Text(dateString)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(minWidth: 70)
-            }
+            Spacer()
             
-            Button(action: {
-                changeDate(by: 1)
-            }) {
-                Image(systemName: "chevron.right")
-                    .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 32, height: 28)
+            // Center - Date switcher
+            HStack(spacing: 0) {
+                Button(action: {
+                    changeDate(by: -1)
+                }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(.white)
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                }
+                
+                Button(action: {
+                    showCalendar = true
+                }) {
+                    Text(dateString)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(minWidth: 80)
+                }
+                
+                Button(action: {
+                    changeDate(by: 1)
+                }) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(!canGoForward)
             }
-            .disabled(!canGoForward)
+            .background(
+                ZStack {
+                    Capsule()
+                        .fill(Color(hex: "0A0A0A").opacity(0.95))
+                    
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.25), location: 0),
+                                    .init(color: Color.white.opacity(0.1), location: 0.5),
+                                    .init(color: Color.white.opacity(0.02), location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                }
+            )
+            .frame(height: 44)
+            
+            Spacer()
+            
+            // Right - Options button
+            Button(action: {
+                // Options action - placeholder
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "0A0A0A").opacity(0.95))
+                    
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.25), location: 0),
+                                    .init(color: Color.white.opacity(0.1), location: 0.5),
+                                    .init(color: Color.white.opacity(0.02), location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 44, height: 44)
+            }
         }
-        .frame(height: 28)
-        .background(Color(hex: "1A1A1C"))
-        .cornerRadius(8)
+        .frame(height: 44)
+        .padding(.horizontal, 16)
         .fullScreenCover(isPresented: $showCalendar) {
             CalendarOverlayView(
                 selectedDate: $currentDate,
@@ -1519,51 +1631,120 @@ struct StreakView: View {
 }
 
 // MARK: - Bottom Navigation
+// MARK: - Bottom Navigation View (iOS 26 Liquid Glass Style)
 struct BottomNavigationView: View {
     @Binding var selectedTab: Int
+    @Namespace private var animation
+    
+    private let tabs: [(icon: String, title: String)] = [
+        ("figure.walk", "Steps"),
+        ("star", "Leaderbord"),
+        ("crown", "Awards"),
+        ("gearshape", "Settings")
+    ]
     
     var body: some View {
-        HStack {
-            TabButton(icon: "square.grid.2x2", title: "Main", isSelected: selectedTab == 0) {
-                selectedTab = 0
-            }
-            
+        VStack(spacing: 0) {
             Spacer()
             
-            TabButton(icon: "trophy", title: "Top", isSelected: selectedTab == 1) {
-                selectedTab = 1
+            HStack(spacing: 0) {
+                ForEach(Array(tabs.enumerated()), id: \.offset) { index, tab in
+                    TabBarButton(
+                        icon: tab.icon,
+                        title: tab.title,
+                        isSelected: selectedTab == index,
+                        namespace: animation
+                    ) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                            selectedTab = index
+                        }
+                    }
+                }
             }
-            
-            Spacer()
-            
-            TabButton(icon: "gearshape", title: "Settings", isSelected: selectedTab == 2) {
-                selectedTab = 2
-            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                ZStack {
+                    Capsule()
+                        .fill(Color(hex: "0A0A0A").opacity(0.95))
+                    
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .opacity(0.1)
+                    
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.25), location: 0),
+                                    .init(color: Color.white.opacity(0.15), location: 0.3),
+                                    .init(color: Color.white.opacity(0.05), location: 0.7),
+                                    .init(color: Color.white.opacity(0.02), location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                }
+            )
+            .clipShape(Capsule())
+            .environment(\.colorScheme, .dark)
+            .padding(.horizontal, 20)
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 12)
-        .background(Color(hex: "0A0A0A"))
+        .padding(.bottom, -9)
     }
 }
 
-struct TabButton: View {
+struct TabBarButton: View {
     let icon: String
     let title: String
     let isSelected: Bool
+    let namespace: Namespace.ID
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: 24))
-                    .foregroundColor(isSelected ? .white : Color(hex: "8E8E93"))
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(isSelected ? Color(hex: "34C759") : Color.white.opacity(0.5))
                 
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(isSelected ? .white : Color(hex: "8E8E93"))
+                    .foregroundColor(isSelected ? Color(hex: "34C759") : Color.white.opacity(0.5))
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(
+                Group {
+                    if isSelected {
+                        ZStack {
+                            Capsule()
+                                .fill(Color(hex: "1A1A1A"))
+                            
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.3), location: 0),
+                                            .init(color: Color.white.opacity(0.15), location: 0.3),
+                                            .init(color: Color.white.opacity(0.05), location: 0.7),
+                                            .init(color: Color.white.opacity(0.0), location: 1)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        }
+                        .matchedGeometryEffect(id: "TAB_BG", in: namespace)
+                    }
+                }
+            )
+            .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1589,10 +1770,15 @@ struct GoalEditorView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 24) {
-                            Text("Set your daily step goal")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.top, 40)
+                            VStack(spacing: 16) {
+                                Text("🎯")
+                                    .font(.system(size: 60))
+                                
+                                Text("Set your daily step goal")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.top, 40)
                             
                             // Goal options
                             VStack(spacing: 12) {
@@ -1606,19 +1792,24 @@ struct GoalEditorView: View {
                                         HStack {
                                             Text("\(goalValue.formatted()) steps")
                                                 .font(.system(size: 17, weight: .semibold))
-                                                .foregroundColor(selectedGoal == goalValue && !showCustomInput ? .black : .white)
+                                                .foregroundColor(.white)
                                             
                                             Spacer()
                                             
                                             if selectedGoal == goalValue && !showCustomInput {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundColor(.black)
+                                                Image(systemName: "checkmark")
+                                                    .foregroundColor(Color(hex: "34C759"))
+                                                    .font(.system(size: 14, weight: .bold))
                                             }
                                         }
                                         .padding(.horizontal, 20)
                                         .frame(height: 56)
-                                        .background(selectedGoal == goalValue && !showCustomInput ? Color(hex: "34C759") : Color(hex: "1A1A1C"))
+                                        .background(Color(hex: "1A1A1C"))
                                         .cornerRadius(12)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(selectedGoal == goalValue && !showCustomInput ? Color(hex: "34C759") : Color.clear, lineWidth: 1.5)
+                                        )
                                     }
                                 }
                                 
@@ -1738,6 +1929,115 @@ struct QuickGoalButton: View {
                 .frame(height: 50)
                 .background(Color(hex: "1A1A1C"))
                 .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Leaderboard Locked View (for anonymous users)
+struct LeaderboardLockedView: View {
+    @ObservedObject var authManager: AuthManager
+    @State private var showEmailLogin = false
+    @State private var showEmailRegister = false
+    
+    var body: some View {
+        ZStack {
+            Color(hex: "0A0A0A")
+                .ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                Spacer()
+                
+                VStack(spacing: 16) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    
+                    Text("Sign in to compete")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Text("Create an account or sign in to join the leaderboard and compete with friends")
+                        .font(.system(size: 15))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    // Sign in with Apple
+                    SignInWithAppleButton(
+                        .signUp,
+                        onRequest: { request in
+                            request.requestedScopes = [.fullName, .email]
+                        },
+                        onCompletion: { result in
+                            authManager.handleSignInWithApple(result: result)
+                        }
+                    )
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(height: 50)
+                    .cornerRadius(12)
+                    
+                    // Sign in with Google
+                    Button(action: {
+                        authManager.signInWithGoogle()
+                    }) {
+                        HStack(spacing: 8) {
+                            GoogleLogo()
+                                .frame(width: 17, height: 17)
+                            Text("Sign up with Google")
+                                .font(.system(size: 16.5, weight: .regular))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                    }
+                    
+                    // Sign up with Email
+                    Button(action: {
+                        showEmailRegister = true
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "envelope.fill")
+                                .font(.system(size: 15))
+                            Text("Sign up with Email")
+                                .font(.system(size: 16.5, weight: .regular))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "3A3A3C"), lineWidth: 1)
+                        )
+                    }
+                    
+                    Button(action: {
+                        showEmailLogin = true
+                    }) {
+                        Text("Already have an account? ")
+                            .foregroundColor(Color(hex: "8E8E93"))
+                        + Text("Sign In")
+                            .foregroundColor(Color(hex: "34C759"))
+                    }
+                    .font(.system(size: 15))
+                    .padding(.top, 8)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 120)
+            }
+        }
+        .sheet(isPresented: $showEmailLogin) {
+            EmailLoginView(authManager: authManager, isRegistering: false)
+        }
+        .sheet(isPresented: $showEmailRegister) {
+            EmailLoginView(authManager: authManager, isRegistering: true)
         }
     }
 }
@@ -2330,6 +2630,30 @@ struct LeaderboardRow: View {
         .padding(.vertical, 12)
         .background(isCurrentUser ? Color(hex: "1A1A1C") : Color.clear)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Awards View (Placeholder)
+struct AwardsView: View {
+    var body: some View {
+        ZStack {
+            Color(hex: "0A0A0A")
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(Color(hex: "34C759"))
+                
+                Text("Awards")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text("Coming soon...")
+                    .font(.system(size: 17))
+                    .foregroundColor(Color(hex: "8E8E93"))
+            }
+        }
     }
 }
 

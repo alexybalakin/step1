@@ -27,6 +27,9 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var weekStreak: [Bool] = Array(repeating: false, count: 7)
     @Published var weekProgress: [Double] = Array(repeating: 0.0, count: 7)
     @Published var streakCount: Int = 0
+    @Published var maxStreak: Int = 0
+    @Published var bestDaySteps: Int = 0
+    @Published var bestDayDate: Date? = nil
     
     @Published var yesterdayDistance: Double = 0.0
     @Published var yesterdayDuration: Int = 0
@@ -130,6 +133,7 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         fetchDurationForDate(yesterdayDate, isYesterday: true)
         fetchWeekStreak()
         calculateGlobalStreak()
+        fetchBestDay()
     }
     
     func fetchStepsForDate(_ date: Date) {
@@ -319,8 +323,10 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let group = DispatchGroup()
         var results: [Date: Bool] = [:]
         
-        // Check up to 30 days back for streak
-        for i in 0..<30 {
+        // Check up to 365 days back for streak and max streak
+        let daysToCheck = 365
+        
+        for i in 0..<daysToCheck {
             let dayToCheck = calendar.date(byAdding: .day, value: -i, to: calendar.date(byAdding: .day, value: -1, to: today)!)!
             let dayStart = calendar.startOfDay(for: dayToCheck)
             let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
@@ -348,19 +354,78 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         
         group.notify(queue: .main) {
-            // Count consecutive days from yesterday
-            var count = 0
-            for i in 0..<30 {
+            // Count current streak (consecutive days from yesterday)
+            var currentCount = 0
+            for i in 0..<daysToCheck {
                 let dayToCheck = calendar.date(byAdding: .day, value: -i - 1, to: today)!
                 let dayStart = calendar.startOfDay(for: dayToCheck)
                 
                 if results[dayStart] == true {
-                    count += 1
+                    currentCount += 1
                 } else {
                     break
                 }
             }
-            self.streakCount = count
+            self.streakCount = currentCount
+            
+            // Calculate max streak
+            var maxCount = 0
+            var tempCount = 0
+            for i in 0..<daysToCheck {
+                let dayToCheck = calendar.date(byAdding: .day, value: -i - 1, to: today)!
+                let dayStart = calendar.startOfDay(for: dayToCheck)
+                
+                if results[dayStart] == true {
+                    tempCount += 1
+                    maxCount = max(maxCount, tempCount)
+                } else {
+                    tempCount = 0
+                }
+            }
+            self.maxStreak = max(maxCount, currentCount)
+        }
+    }
+    
+    // MARK: - Fetch Best Day (highest step count in last 365 days)
+    func fetchBestDay() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let daysToCheck = 365
+        
+        let group = DispatchGroup()
+        var daySteps: [(date: Date, steps: Int)] = []
+        let lock = NSLock()
+        
+        for i in 0..<daysToCheck {
+            let dayStart = calendar.date(byAdding: .day, value: -i, to: today)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            
+            group.enter()
+            
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                defer { group.leave() }
+                
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    if steps > 0 {
+                        lock.lock()
+                        daySteps.append((date: dayStart, steps: steps))
+                        lock.unlock()
+                    }
+                }
+            }
+            
+            self.healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            if let best = daySteps.max(by: { $0.steps < $1.steps }) {
+                self.bestDaySteps = best.steps
+                self.bestDayDate = best.date
+            }
         }
     }
     

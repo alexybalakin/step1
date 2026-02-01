@@ -98,7 +98,7 @@ struct MainAppView: View {
                     .padding(.top, 8)
                     
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 0) {
                             CircularProgressView(
                                 steps: healthManager.steps,
                                 goal: healthManager.dailyGoal,
@@ -106,42 +106,71 @@ struct MainAppView: View {
                                 percentage: healthManager.percentageOverGoal,
                                 goalReached: healthManager.goalReached
                             )
-                            .padding(.top, 34)
-                            .padding(.bottom, 14)
                             .onTapGesture {
                                 showGoalEditor = true
                             }
                             
-                            HStack(spacing: 12) {
-                                StatCard(
-                                    title: "DISTANCE",
-                                    value: String(format: "%.1f", healthManager.distance),
-                                    unit: "km",
-                                    percentage: healthManager.distanceChange >= 0 ?
-                                        String(format: "+ %.1f%%", healthManager.distanceChange) :
-                                        String(format: "%.1f%%", healthManager.distanceChange),
-                                    isPositive: healthManager.distanceChange >= 0
+                            // Streak + Best Day tiles
+                            HStack(spacing: 8) {
+                                StreakTile(
+                                    currentStreak: healthManager.streakCount,
+                                    maxStreak: healthManager.maxStreak
                                 )
                                 
-                                StatCard(
-                                    title: "DURATION",
-                                    value: "\(healthManager.duration)",
-                                    unit: "min",
-                                    percentage: healthManager.durationChange >= 0 ?
-                                        String(format: "+ %.1f%%", healthManager.durationChange) :
-                                        String(format: "%.1f%%", healthManager.durationChange),
-                                    isPositive: healthManager.durationChange >= 0
+                                BestDayTile(
+                                    bestSteps: healthManager.bestDaySteps,
+                                    bestDate: healthManager.bestDayDate
                                 )
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 16)
                             
-                            StreakView(
-                                streakCount: healthManager.streakCount,
-                                weekStreak: healthManager.weekStreak,
-                                weekProgress: healthManager.weekProgress,
-                                currentDate: currentDate
-                            )
-                            .padding(.horizontal, 20)
+                            // Distance / Time / Calories tiles
+                            HStack(spacing: 8) {
+                                StepMetricTile(
+                                    title: "Distance",
+                                    value: {
+                                        let km = Double(healthManager.steps) * 0.00075
+                                        if km < 0.1 {
+                                            return "\(Int(km * 1000)) m"
+                                        } else {
+                                            return String(format: "%.1f km", km)
+                                        }
+                                    }()
+                                )
+                                
+                                StepMetricTile(
+                                    title: "Time",
+                                    value: {
+                                        let km = Double(healthManager.steps) * 0.00075
+                                        let totalSeconds = (km / 5.0) * 3600.0
+                                        let totalMinutes = Int(totalSeconds) / 60
+                                        let secs = Int(totalSeconds) % 60
+                                        let hours = totalMinutes / 60
+                                        let mins = totalMinutes % 60
+                                        if hours > 0 {
+                                            return "\(hours)h \(mins)m"
+                                        } else if totalMinutes > 0 {
+                                            return "\(mins)m"
+                                        } else {
+                                            return "\(secs)s"
+                                        }
+                                    }()
+                                )
+                                
+                                StepMetricTile(
+                                    title: "Calories",
+                                    value: {
+                                        let cal = Double(healthManager.steps) * 0.045
+                                        if cal < 1 && cal > 0 {
+                                            return String(format: "%.1f kcal", cal)
+                                        } else {
+                                            return "\(Int(cal)) kcal"
+                                        }
+                                    }()
+                                )
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
                             .padding(.bottom, 100)
                         }
                     }

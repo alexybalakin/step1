@@ -266,7 +266,7 @@ struct LoginView: View {
                             GoogleLogo()
                                 .frame(width: 17, height: 17)
                             Text("Sign up with Google")
-                                .font(.system(size: 16.5, weight: .regular))
+                                .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -285,7 +285,7 @@ struct LoginView: View {
                             Image(systemName: "envelope.fill")
                                 .font(.system(size: 15))
                             Text("Sign up with Email")
-                                .font(.system(size: 16.5, weight: .regular))
+                                .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -302,7 +302,7 @@ struct LoginView: View {
                         authManager.signInAnonymously()
                     }) {
                         Text("Continue without registration")
-                            .font(.system(size: 16.5, weight: .regular))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(Color(hex: "8E8E93"))
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -1416,93 +1416,120 @@ struct CircularProgressView: View {
         return Double(remainder) / Double(goal)
     }
     
-    private let circleSize: CGFloat = 280
-    private let strokeWidth: CGFloat = 12
+    // Circle specs
+    private let containerSize: CGFloat = 280
+    private let circleSize: CGFloat = 270
+    private let strokeWidth: CGFloat = 10
+    private let innerCircleSize: CGFloat = 250
+    private let innerStrokeWidth: CGFloat = 2
     
     var body: some View {
-        ZStack {
-            // Background fill
+        HStack(spacing: 24) {
+            // Left dot
             Circle()
-                .fill(Color(hex: "1A1A1C"))
-                .frame(width: circleSize, height: circleSize)
+                .fill(Color(hex: "B8B8B8"))
+                .frame(width: 8, height: 8)
             
-            // Background stroke
-            Circle()
-                .stroke(Color(hex: "2C2C2E"), lineWidth: strokeWidth)
-                .frame(width: circleSize, height: circleSize)
-            
-            // Main progress circle
-            if goalMultiplier == 0 {
+            // Main circle container
+            ZStack {
+                // Background container
                 Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(
-                        Color(hex: "34C759"),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                    )
-                    .frame(width: circleSize, height: circleSize)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 1), value: progress)
-            } else {
+                    .fill(Color(hex: "101010"))
+                    .frame(width: containerSize, height: containerSize)
+                
+                // Gray track circle - stroke center, diameter 270
                 Circle()
-                    .stroke(Color(hex: "34C759"), lineWidth: strokeWidth)
+                    .stroke(Color(hex: "1A1A1A"), lineWidth: strokeWidth)
                     .frame(width: circleSize, height: circleSize)
                 
-                if currentProgress > 0 {
+                // Green progress circle - stroke center, diameter 270, color 00CA48
+                if goalMultiplier == 0 {
                     Circle()
-                        .trim(from: 0, to: currentProgress)
+                        .trim(from: 0, to: progress)
                         .stroke(
-                            Color(hex: "34C759"),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                            Color(hex: "00CA48"),
+                            style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                         )
-                        .frame(width: circleSize - 32, height: circleSize - 32)
+                        .frame(width: circleSize, height: circleSize)
                         .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 1), value: currentProgress)
-                }
-            }
-            
-            // Top indicator - positioned at top edge of circle
-            if goalReached {
-                ZStack {
+                        .animation(.easeInOut(duration: 1), value: progress)
+                } else {
+                    // Full circle when goal reached
                     Circle()
-                        .fill(Color(hex: "34C759"))
-                        .frame(width: 26, height: 26)
+                        .stroke(Color(hex: "00CA48"), lineWidth: strokeWidth)
+                        .frame(width: circleSize, height: circleSize)
                     
-                    if goalMultiplier >= 2 {
-                        Text("x\(goalMultiplier)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.black)
-                    } else {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.black)
+                    // Thin inner progress circle for over-goal, diameter 250, 2px
+                    if currentProgress > 0 {
+                        Circle()
+                            .trim(from: 0, to: currentProgress)
+                            .stroke(
+                                Color(hex: "00CA48"),
+                                style: StrokeStyle(lineWidth: innerStrokeWidth, lineCap: .round)
+                            )
+                            .frame(width: innerCircleSize, height: innerCircleSize)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 1), value: currentProgress)
                     }
                 }
-                .offset(y: -circleSize/2 + strokeWidth + 28)
-            }
-            
-            // Center content
-            VStack(spacing: 2) {
-                Text("Steps")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "8E8E93"))
                 
-                Text("\(steps.formatted())")
-                    .font(.system(size: 52, weight: .bold))
-                    .foregroundColor(.white)
-                    .contentTransition(.numericText())
-                
-                Text("Goal \(goal.formatted())")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "8E8E93"))
+                // Center content - VStack with 16px gap, 5 elements
+                VStack(spacing: 16) {
+                    // 1. Top badge container 34x34
+                    ZStack {
+                        if goalReached {
+                            // Green circle 28x28 with checkmark or multiplier
+                            Circle()
+                                .fill(Color(hex: "00CA48"))
+                                .frame(width: 28, height: 28)
+                            
+                            if goalMultiplier >= 2 {
+                                Text("\(goalMultiplier)X")
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundColor(.black)
+                            } else {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.black)
+                            }
+                        }
+                    }
+                    .frame(width: 34, height: 34)
+                    
+                    // 2. Top label - "Steplease" or "Goal Achieved"
+                    Text(goalReached ? "Goal Achieved" : "Steplease")
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(goalReached ? Color(hex: "00CA48") : Color(hex: "8E8E93"))
+                    
+                    // 3. Steps number - SF Pro Display, bold, 44px
+                    Text("\(steps.formatted())")
+                        .font(.system(size: 44, weight: .bold))
+                        .foregroundColor(.white)
+                        .contentTransition(.numericText())
+                    
+                    // 4. Goal label - SF Mono, 14px, regular
+                    Text("Goal \(goal.formatted()) steps")
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    
+                    // 5. Bottom chevron container 34x34
+                    ZStack {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                    }
+                    .frame(width: 34, height: 34)
+                }
             }
+            .frame(width: containerSize, height: containerSize)
             
-            // Bottom chevron - positioned at bottom edge of circle
-            Image(systemName: "chevron.down")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color(hex: "8E8E93"))
-                .offset(y: circleSize/2 - strokeWidth - 28)
+            // Right dot
+            Circle()
+                .fill(Color(hex: "B8B8B8"))
+                .frame(width: 8, height: 8)
         }
-        .frame(width: circleSize, height: circleSize)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 24)
     }
 }
 
@@ -1545,7 +1572,107 @@ struct StatCard: View {
     }
 }
 
-// MARK: - Streak View
+// MARK: - Streak Tile
+struct StreakTile: View {
+    let currentStreak: Int
+    let maxStreak: Int
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header with chevron
+            HStack(spacing: 10) {
+                Text("Streak")
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(hex: "8E8E93"))
+            }
+            
+            // Current streak value
+            Text("\(currentStreak) 🔥")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundColor(.white)
+            
+            // Max streak
+            Text("MAX \(maxStreak)")
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundColor(Color(hex: "8E8E93"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(hex: "101010"))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Best Day Tile
+struct BestDayTile: View {
+    let bestSteps: Int
+    let bestDate: Date?
+    
+    private var dateString: String {
+        guard let date = bestDate else { return "—" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMM yyyy"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header with chevron
+            HStack(spacing: 10) {
+                Text("Best Day")
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(hex: "8E8E93"))
+            }
+            
+            // Best steps value
+            Text("\(bestSteps.formatted())")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundColor(.white)
+            
+            // Date of best day
+            Text(dateString)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundColor(Color(hex: "8E8E93"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(hex: "101010"))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Step Metric Tile (Distance / Time / Calories)
+struct StepMetricTile: View {
+    let title: String
+    let value: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundColor(Color(hex: "8E8E93"))
+            
+            Text(value)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(hex: "101010"))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Streak View (legacy, kept for reference)
 struct StreakView: View {
     let streakCount: Int
     let weekStreak: [Bool]
@@ -1560,73 +1687,7 @@ struct StreakView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("STREAK")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(streakCount)")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Text("days")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(Color(hex: "8E8E93"))
-                    }
-                }
-                
-                Spacer()
-                
-                // Fire icon when streak >= 1
-                if streakCount >= 1 {
-                    Text("🔥")
-                        .font(.system(size: 40))
-                }
-            }
-            
-            HStack(spacing: 12) {
-                ForEach(0..<7) { index in
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: "3A3A3C"))
-                                .frame(width: 36, height: 36)
-                            
-                            if weekStreak[index] {
-                                Circle()
-                                    .fill(Color(hex: "34C759"))
-                                    .frame(width: 36, height: 36)
-                                
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.black)
-                            }
-                            else if weekProgress[index] > 0 {
-                                Circle()
-                                    .trim(from: 0, to: weekProgress[index])
-                                    .stroke(
-                                        Color(hex: "34C759"),
-                                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                                    )
-                                    .frame(width: 36, height: 36)
-                                    .rotationEffect(.degrees(-90))
-                            }
-                        }
-                        
-                        Text(days[index])
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(index == selectedDayIndex ? .white : Color(hex: "8E8E93"))
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(hex: "1A1A1C"))
-        .cornerRadius(16)
+        EmptyView()
     }
 }
 
@@ -1988,7 +2049,7 @@ struct LeaderboardLockedView: View {
                             GoogleLogo()
                                 .frame(width: 17, height: 17)
                             Text("Sign up with Google")
-                                .font(.system(size: 16.5, weight: .regular))
+                                .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -2005,7 +2066,7 @@ struct LeaderboardLockedView: View {
                             Image(systemName: "envelope.fill")
                                 .font(.system(size: 15))
                             Text("Sign up with Email")
-                                .font(.system(size: 16.5, weight: .regular))
+                                .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)

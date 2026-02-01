@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AuthenticationServices
+import UserNotifications
 
 // MARK: - Splash Screen
 struct SplashScreenView: View {
@@ -243,19 +244,24 @@ struct LoginView: View {
                 Spacer()
                 
                 VStack(spacing: 12) {
-                    // Sign in with Apple
-                    SignInWithAppleButton(
-                        .signUp,
-                        onRequest: { request in
-                            request.requestedScopes = [.fullName, .email]
-                        },
-                        onCompletion: { result in
-                            authManager.handleSignInWithApple(result: result)
+                    // Sign in with Apple (custom button for consistent font)
+                    Button(action: {
+                        authManager.signInWithApple()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 17, weight: .medium))
+                            Text("Sign up with Apple")
+                                .font(.system(size: 16, weight: .medium))
                         }
-                    )
-                    .signInWithAppleButtonStyle(.white)
-                    .frame(height: 50)
-                    .cornerRadius(12)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                    }
+                    .disabled(authManager.isLoading)
+                    .opacity(authManager.isLoading ? 0.6 : 1)
                     
                     // Sign in with Google
                     Button(action: {
@@ -560,6 +566,11 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var deleteError: String?
+    @State private var showProfile = false
+    @State private var notificationsEnabled = false
+    @State private var dailyReminderTime = Date()
+    @State private var useMetric = true       // true = km/kg, false = mi/lbs
+    @State private var weekStartsMonday = true // true = Monday, false = Sunday
     
     var body: some View {
         ZStack {
@@ -579,25 +590,12 @@ struct SettingsView: View {
                         SettingsSectionHeader(title: "ACCOUNT")
                         
                         VStack(spacing: 0) {
-                            Button(action: { showNameEditor = true }) {
+                            Button(action: { showProfile = true }) {
                                 SettingsRowContent(
                                     icon: "person.circle.fill",
-                                    title: "Name",
+                                    title: "Profile",
                                     value: authManager.userName.isEmpty ? "User" : authManager.userName,
                                     showChevron: true
-                                )
-                            }
-                            
-                            if !authManager.userEmail.isEmpty {
-                                Divider()
-                                    .background(Color(hex: "3A3A3C"))
-                                    .padding(.leading, 52)
-                                
-                                SettingsRowContent(
-                                    icon: "envelope.fill",
-                                    title: "Email",
-                                    value: authManager.userEmail,
-                                    showChevron: false
                                 )
                             }
                         }
@@ -617,6 +615,201 @@ struct SettingsView: View {
                                     value: "\(healthManager.dailyGoal.formatted()) steps",
                                     showChevron: true
                                 )
+                            }
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // General
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "GENERAL")
+                        
+                        VStack(spacing: 0) {
+                            // Distance units
+                            HStack {
+                                Image(systemName: "ruler")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "007AFF"))
+                                    .cornerRadius(6)
+                                
+                                Text("Distance")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                Picker("", selection: $useMetric) {
+                                    Text("km").tag(true)
+                                    Text("mi").tag(false)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 120)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            
+                            Divider()
+                                .background(Color(hex: "3A3A3C"))
+                                .padding(.leading, 52)
+                            
+                            // First day of week
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "34C759"))
+                                    .cornerRadius(6)
+                                
+                                Text("Week starts")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                Picker("", selection: $weekStartsMonday) {
+                                    Text("Mon").tag(true)
+                                    Text("Sun").tag(false)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 120)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                    .onChange(of: useMetric) { _, value in
+                        UserDefaults.standard.set(value, forKey: "use_metric")
+                        healthManager.useMetric = value
+                    }
+                    .onChange(of: weekStartsMonday) { _, value in
+                        UserDefaults.standard.set(value, forKey: "week_starts_monday")
+                        healthManager.weekStartsMonday = value
+                    }
+                    
+                    // Notifications
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "NOTIFICATIONS")
+                        
+                        VStack(spacing: 0) {
+                            HStack {
+                                Image(systemName: "bell.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "FF9500"))
+                                    .cornerRadius(6)
+                                
+                                Text("Daily Reminder")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                Toggle("", isOn: $notificationsEnabled)
+                                    .labelsHidden()
+                                    .tint(Color(hex: "00CA48"))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            
+                            if notificationsEnabled {
+                                Divider()
+                                    .background(Color(hex: "3A3A3C"))
+                                    .padding(.leading, 52)
+                                
+                                HStack {
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color(hex: "5856D6"))
+                                        .cornerRadius(6)
+                                    
+                                    Text("Reminder Time")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.white)
+                                    
+                                    Spacer()
+                                    
+                                    DatePicker("", selection: $dailyReminderTime, displayedComponents: .hourAndMinute)
+                                        .labelsHidden()
+                                        .colorScheme(.dark)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                            }
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                    .onChange(of: notificationsEnabled) { _, enabled in
+                        if enabled {
+                            NotificationManager.shared.requestPermission { granted in
+                                if granted {
+                                    NotificationManager.shared.scheduleDailyReminder(at: dailyReminderTime)
+                                    NotificationManager.shared.scheduleGoalAchievedCheck(goal: healthManager.dailyGoal)
+                                } else {
+                                    notificationsEnabled = false
+                                }
+                            }
+                        } else {
+                            NotificationManager.shared.removeAllNotifications()
+                        }
+                        UserDefaults.standard.set(enabled, forKey: "notifications_enabled")
+                    }
+                    .onChange(of: dailyReminderTime) { _, newTime in
+                        if notificationsEnabled {
+                            NotificationManager.shared.scheduleDailyReminder(at: newTime)
+                        }
+                        UserDefaults.standard.set(newTime.timeIntervalSince1970, forKey: "reminder_time")
+                    }
+                    
+                    // Widget
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "WIDGET")
+                        
+                        VStack(spacing: 0) {
+                            Button(action: {
+                                // Open iOS widget gallery instruction
+                                if let url = URL(string: "https://support.apple.com/en-us/HT207122") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "square.grid.2x2.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color(hex: "00CA48"))
+                                        .cornerRadius(6)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Add Widget")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.white)
+                                        
+                                        Text("Long press home screen → Add Widget → StePlease")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color(hex: "8E8E93"))
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color(hex: "48484A"))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
                             }
                         }
                         .background(Color(hex: "1A1A1C"))
@@ -673,38 +866,7 @@ struct SettingsView: View {
                     .padding(.horizontal, 20)
                     
                     Spacer()
-                    
-                    VStack(spacing: 12) {
-                        Button(action: {
-                            authManager.signOut()
-                        }) {
-                            Text("Sign Out")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color(hex: "FF3B30"))
-                                .cornerRadius(12)
-                        }
-                        
-                        Button(action: {
-                            showDeleteConfirmation = true
-                        }) {
-                            Text("Delete Account")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(Color(hex: "FF3B30"))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Color(hex: "1A1A1C"))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color(hex: "FF3B30"), lineWidth: 1)
-                                )
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 100)
+                        .frame(height: 100)
                 }
             }
             
@@ -721,11 +883,173 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showNameEditor) {
-            NameEditorView(authManager: authManager)
+        .onAppear {
+            notificationsEnabled = UserDefaults.standard.bool(forKey: "notifications_enabled")
+            let savedTime = UserDefaults.standard.double(forKey: "reminder_time")
+            if savedTime > 0 {
+                dailyReminderTime = Date(timeIntervalSince1970: savedTime)
+            } else {
+                // Default 9 PM
+                var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+                components.hour = 21
+                components.minute = 0
+                dailyReminderTime = Calendar.current.date(from: components) ?? Date()
+            }
+            // Load unit preferences (default: metric, Monday)
+            if UserDefaults.standard.object(forKey: "use_metric") != nil {
+                useMetric = UserDefaults.standard.bool(forKey: "use_metric")
+            }
+            if UserDefaults.standard.object(forKey: "week_starts_monday") != nil {
+                weekStartsMonday = UserDefaults.standard.bool(forKey: "week_starts_monday")
+            }
+        }
+        .sheet(isPresented: $showProfile) {
+            ProfileView(authManager: authManager, healthManager: healthManager)
         }
         .sheet(isPresented: $showGoalEditor) {
             GoalEditorView(goal: $healthManager.dailyGoal)
+        }
+    }
+}
+
+// MARK: - Profile View
+struct ProfileView: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var authManager: AuthManager
+    @ObservedObject var healthManager: HealthManager
+    @State private var showNameEditor = false
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(hex: "0A0A0A")
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Avatar
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "00CA48"))
+                                .frame(width: 80, height: 80)
+                            
+                            Text(String(authManager.userName.prefix(1)).uppercased())
+                                .font(.system(size: 34, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.top, 24)
+                        
+                        VStack(spacing: 4) {
+                            Text(authManager.userName.isEmpty ? "User" : authManager.userName)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            if !authManager.userEmail.isEmpty {
+                                Text(authManager.userEmail)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "8E8E93"))
+                            }
+                            
+                            Text("Auth: \(authManager.authProvider.capitalized)")
+                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .padding(.top, 2)
+                        }
+                        
+                        // Edit name
+                        VStack(spacing: 0) {
+                            Button(action: { showNameEditor = true }) {
+                                SettingsRowContent(
+                                    icon: "pencil",
+                                    title: "Edit Name",
+                                    value: authManager.userName,
+                                    showChevron: true
+                                )
+                            }
+                            
+                            if !authManager.userEmail.isEmpty {
+                                Divider()
+                                    .background(Color(hex: "3A3A3C"))
+                                    .padding(.leading, 52)
+                                
+                                SettingsRowContent(
+                                    icon: "envelope.fill",
+                                    title: "Email",
+                                    value: authManager.userEmail,
+                                    showChevron: false
+                                )
+                            }
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+                        
+                        Spacer()
+                            .frame(height: 40)
+                        
+                        // Sign Out & Delete
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                authManager.signOut()
+                                dismiss()
+                            }) {
+                                Text("Sign Out")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(Color(hex: "FF3B30"))
+                                    .cornerRadius(12)
+                            }
+                            
+                            Button(action: {
+                                showDeleteConfirmation = true
+                            }) {
+                                Text("Delete Account")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(Color(hex: "FF3B30"))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(Color(hex: "1A1A1C"))
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color(hex: "FF3B30"), lineWidth: 1)
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 40)
+                    }
+                }
+                
+                if isDeleting {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                    VStack {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.5)
+                        Text("Deleting account...")
+                            .foregroundColor(.white)
+                            .padding(.top, 16)
+                    }
+                }
+            }
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(Color(hex: "00CA48"))
+                }
+            }
+        }
+        .sheet(isPresented: $showNameEditor) {
+            NameEditorView(authManager: authManager)
         }
         .alert("Delete Account", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -735,6 +1059,8 @@ struct SettingsView: View {
                     isDeleting = false
                     if let error = error {
                         deleteError = error
+                    } else {
+                        dismiss()
                     }
                 }
             }
@@ -850,7 +1176,7 @@ struct NameEditorView: View {
 struct InviteFriendCard: View {
     @State private var showShareSheet = false
     @State private var showCopied = false
-    let appStoreLink = "https://apps.apple.com/app/steplease" // Update with real link after release
+    let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873" // Update with real link after release
     
     var body: some View {
         VStack(spacing: 16) {
@@ -938,7 +1264,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 // MARK: - Compact Invite Button (for Friends tab)
 struct CompactInviteButton: View {
     @State private var showShareSheet = false
-    let appStoreLink = "https://apps.apple.com/app/steplease"
+    let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
     var body: some View {
         Button {
@@ -1042,6 +1368,7 @@ struct TopNavigationView: View {
     @Binding var selectedPeriod: Int
     @Binding var currentDate: Date
     @ObservedObject var healthManager: HealthManager
+    var authManager: AuthManager? = nil
     @State private var showCalendar = false
     
     var canGoForward: Bool {
@@ -1086,9 +1413,15 @@ struct TopNavigationView: View {
                             lineWidth: 1
                         )
                     
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.white)
+                    if let auth = authManager, !auth.isAnonymous, !auth.userName.isEmpty {
+                        Text(String(auth.userName.prefix(1)).uppercased())
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.white)
+                    } else {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white)
+                    }
                 }
                 .frame(width: 44, height: 44)
             }
@@ -1529,7 +1862,7 @@ struct CircularProgressView: View {
                 .frame(width: 8, height: 8)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 24)
+        .padding(.vertical, 20)
     }
 }
 
@@ -1591,9 +1924,14 @@ struct StreakTile: View {
             }
             
             // Current streak value
-            Text("\(currentStreak) 🔥")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundColor(.white)
+            HStack(spacing: 2) {
+                Text("\(currentStreak)")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(currentStreak > 0 ? .white : Color(hex: "8E8E93"))
+                Text(" 🔥")
+                    .font(.system(size: 22))
+                    .opacity(currentStreak > 0 ? 1.0 : 0.5)
+            }
             
             // Max streak
             Text("MAX \(maxStreak)")
@@ -1658,7 +1996,7 @@ struct StepMetricTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: 14, weight: .regular, design: .monospaced))
                 .foregroundColor(Color(hex: "8E8E93"))
             
             Text(value)
@@ -1666,6 +2004,101 @@ struct StepMetricTile: View {
                 .foregroundColor(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(hex: "101010"))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Day Progress Chart
+struct DayProgressChart: View {
+    let hourlyStepsToday: [Int]     // 24 values, one per hour
+    let hourlyStepsYesterday: [Int] // 24 values, one per hour
+    
+    private let chartHeight: CGFloat = 72
+    private let hours = [0, 6, 12, 18, 24]
+    
+    private var maxSteps: Int {
+        let maxToday = hourlyStepsToday.max() ?? 0
+        let maxYesterday = hourlyStepsYesterday.max() ?? 0
+        return max(maxToday, maxYesterday, 1)
+    }
+    
+    private func barHeight(steps: Int, isPlaceholder: Bool = false) -> CGFloat {
+        if steps == 0 {
+            return isPlaceholder ? 4 : 2
+        }
+        let ratio = CGFloat(steps) / CGFloat(maxSteps)
+        return max(4, ratio * chartHeight)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Day progress")
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(hex: "8E8E93"))
+            }
+            
+            VStack(spacing: 4) {
+                // Bars - use GeometryReader to fill full width
+                GeometryReader { geo in
+                    HStack(alignment: .bottom, spacing: 5) {
+                        ForEach(0..<24, id: \.self) { hour in
+                            ZStack(alignment: .bottom) {
+                                // Yesterday bar (shadow)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color(hex: "373737"))
+                                    .frame(
+                                        height: barHeight(
+                                            steps: hourlyStepsYesterday[hour],
+                                            isPlaceholder: true
+                                        )
+                                    )
+                                
+                                // Today bar (green, on top)
+                                if hourlyStepsToday[hour] > 0 {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color(hex: "00CA48"))
+                                        .frame(
+                                            height: barHeight(steps: hourlyStepsToday[hour])
+                                        )
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                .frame(height: chartHeight)
+                
+                // Hour labels
+                HStack {
+                    Text("0")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    Spacer()
+                    Text("6")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    Spacer()
+                    Text("12")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    Spacer()
+                    Text("18")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    Spacer()
+                    Text("24")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+            }
+        }
         .padding(16)
         .background(Color(hex: "101010"))
         .cornerRadius(20)
@@ -2027,19 +2460,24 @@ struct LeaderboardLockedView: View {
                 Spacer()
                 
                 VStack(spacing: 12) {
-                    // Sign in with Apple
-                    SignInWithAppleButton(
-                        .signUp,
-                        onRequest: { request in
-                            request.requestedScopes = [.fullName, .email]
-                        },
-                        onCompletion: { result in
-                            authManager.handleSignInWithApple(result: result)
+                    // Sign in with Apple (custom button for consistent font)
+                    Button(action: {
+                        authManager.signInWithApple()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 17, weight: .medium))
+                            Text("Sign up with Apple")
+                                .font(.system(size: 16, weight: .medium))
                         }
-                    )
-                    .signInWithAppleButtonStyle(.white)
-                    .frame(height: 50)
-                    .cornerRadius(12)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                    }
+                    .disabled(authManager.isLoading)
+                    .opacity(authManager.isLoading ? 0.6 : 1)
                     
                     // Sign in with Google
                     Button(action: {
@@ -2736,5 +3174,68 @@ extension Color {
             (a, r, g, b) = (255, 0, 0, 0)
         }
         self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
+    }
+}
+
+// MARK: - Notification Manager
+class NotificationManager: ObservableObject {
+    static let shared = NotificationManager()
+    
+    func requestPermission(completion: @escaping (Bool) -> Void) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            DispatchQueue.main.async {
+                completion(granted)
+            }
+        }
+    }
+    
+    func scheduleDailyReminder(at time: Date) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["daily_reminder"])
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Time to walk! 🚶"
+        content.body = "Don't forget to reach your step goal today."
+        content.sound = .default
+        
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.hour, .minute], from: time)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        
+        let request = UNNotificationRequest(identifier: "daily_reminder", content: content, trigger: trigger)
+        center.add(request)
+    }
+    
+    func scheduleGoalAchievedCheck(goal: Int) {
+        // Motivational notifications at different times
+        let center = UNUserNotificationCenter.current()
+        
+        let messages = [
+            ("morning_motivation", 8, 0, "Good morning! ☀️", "Start your day with a walk — your step goal is waiting!"),
+            ("midday_check", 13, 0, "Halfway there? 🏃", "Check your progress — you might be closer to your goal than you think!"),
+            ("evening_push", 19, 0, "Final stretch! 💪", "Still have steps to go? A short evening walk can make all the difference.")
+        ]
+        
+        for (id, hour, minute, title, body) in messages {
+            center.removePendingNotificationRequests(withIdentifiers: [id])
+            
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            
+            var components = DateComponents()
+            components.hour = hour
+            components.minute = minute
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+            center.add(request)
+        }
+    }
+    
+    func removeAllNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
     }
 }

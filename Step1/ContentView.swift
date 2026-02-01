@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var healthManager = HealthManager()
     @StateObject private var leaderboardManager = LeaderboardManager()
     @StateObject private var groupManager = GroupManager() // NEW: Group Manager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = 0
     @State private var selectedPeriod = 0
     @State private var currentDate = Date()
@@ -13,6 +14,10 @@ struct ContentView: View {
     @State private var lastDate = Date()
     @State private var showSplash = true
     @State private var isOnboardingComplete = true // Default true, will check after auth
+    @State private var midnightTimer: Timer?
+    @State private var pendingGroupCode: String? = nil
+    @State private var showJoinGroupAlert = false
+    @State private var joinGroupResult: String = ""
     
     var body: some View {
         ZStack {
@@ -55,17 +60,101 @@ struct ContentView: View {
                     showSplash = false
                 }
             }
+            
+            // Schedule midnight timer
+            scheduleMidnightReset()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                // App came to foreground - check if day changed
+                checkDayChange()
+                scheduleMidnightReset()
+            }
         }
         .onChange(of: authManager.isAuthenticated) { _, isAuth in
             if isAuth && !authManager.userID.isEmpty {
                 isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(authManager.userID)")
                 selectedTab = 0 // Always show Main tab after login
-                groupManager.loadUserGroups() // NEW: reload groups on auth change
+                groupManager.loadUserGroups() // reload groups on auth change
+                
+                // Handle pending group join after login
+                if let code = pendingGroupCode {
+                    pendingGroupCode = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        groupManager.joinGroupFromLink(code: code) { result in
+                            switch result {
+                            case .success(let group):
+                                joinGroupResult = "Joined \"\(group.name)\"!"
+                                showJoinGroupAlert = true
+                                selectedTab = 1
+                            case .failure(let error):
+                                joinGroupResult = error.localizedDescription
+                                showJoinGroupAlert = true
+                            }
+                        }
+                    }
+                }
             }
         }
         .onChange(of: authManager.userID) { _, userID in
             if !userID.isEmpty {
                 isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(userID)")
+            }
+        }
+        .onOpenURL { url in
+            // Handle deep link: steplease://join/XXXXXX
+            if let code = groupManager.parseJoinURL(url) {
+                if authManager.isAuthenticated && !authManager.isAnonymous {
+                    // User is logged in — join immediately
+                    groupManager.joinGroupFromLink(code: code) { result in
+                        switch result {
+                        case .success(let group):
+                            joinGroupResult = "Joined \"\(group.name)\"!"
+                            showJoinGroupAlert = true
+                            selectedTab = 1 // Switch to leaderboard
+                        case .failure(let error):
+                            joinGroupResult = error.localizedDescription
+                            showJoinGroupAlert = true
+                        }
+                    }
+                } else {
+                    // Save for after login
+                    pendingGroupCode = code
+                }
+            }
+        }
+        .alert("Group", isPresented: $showJoinGroupAlert) {
+            Button("OK") { }
+        } message: {
+            Text(joinGroupResult)
+        }
+    }
+    
+    private func checkDayChange() {
+        let calendar = Calendar.current
+        if !calendar.isDateInToday(currentDate) {
+            // Day has changed, reset to today
+            currentDate = Date()
+            healthManager.currentDate = Date()
+            healthManager.loadDataForCurrentDate()
+        }
+    }
+    
+    private func scheduleMidnightReset() {
+        midnightTimer?.invalidate()
+        
+        let calendar = Calendar.current
+        let now = Date()
+        let tomorrow = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now)!)
+        let interval = tomorrow.timeIntervalSince(now) + 1 // 1 second after midnight
+        
+        midnightTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+            DispatchQueue.main.async {
+                currentDate = Date()
+                healthManager.currentDate = Date()
+                healthManager.loadDataForCurrentDate()
+                // Schedule next midnight reset
+                scheduleMidnightReset()
             }
         }
     }
@@ -93,7 +182,8 @@ struct MainAppView: View {
                     TopNavigationView(
                         selectedPeriod: $selectedPeriod,
                         currentDate: $currentDate,
-                        healthManager: healthManager
+                        healthManager: healthManager,
+                        authManager: authManager
                     )
                     .padding(.top, 8)
                     
@@ -130,10 +220,20 @@ struct MainAppView: View {
                                     title: "Distance",
                                     value: {
                                         let km = Double(healthManager.steps) * 0.00075
-                                        if km < 0.1 {
-                                            return "\(Int(km * 1000)) m"
+                                        if healthManager.useMetric {
+                                            if km < 0.1 {
+                                                return "\(Int(km * 1000)) m"
+                                            } else {
+                                                return String(format: "%.1f km", km)
+                                            }
                                         } else {
-                                            return String(format: "%.1f km", km)
+                                            let miles = km * 0.621371
+                                            if miles < 0.1 {
+                                                let feet = Int(miles * 5280)
+                                                return "\(feet) ft"
+                                            } else {
+                                                return String(format: "%.1f mi", miles)
+                                            }
                                         }
                                     }()
                                 )
@@ -169,6 +269,14 @@ struct MainAppView: View {
                                     }()
                                 )
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            
+                            // Day Progress Chart
+                            DayProgressChart(
+                                hourlyStepsToday: healthManager.hourlyStepsToday,
+                                hourlyStepsYesterday: healthManager.hourlyStepsYesterday
+                            )
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
                             .padding(.bottom, 100)

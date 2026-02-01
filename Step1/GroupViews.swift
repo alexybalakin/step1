@@ -137,6 +137,8 @@ struct CreateGroupSheet: View {
     @State private var groupDescription = ""
     @State private var isCreating = false
     @State private var errorMessage = ""
+    @State private var createdGroup: CustomGroup? = nil
+    @State private var showShareSheet = false
     
     var body: some View {
         NavigationView {
@@ -145,99 +147,142 @@ struct CreateGroupSheet: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Icon
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: "34C759").opacity(0.2))
-                                .frame(width: 80, height: 80)
-                            
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(Color(hex: "34C759"))
-                        }
-                        .padding(.top, 32)
-                        
-                        Text("Create a Group")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Text("Compete with friends, colleagues, or family")
-                            .font(.system(size: 15))
-                            .foregroundColor(Color(hex: "8E8E93"))
-                            .multilineTextAlignment(.center)
-                        
-                        VStack(spacing: 16) {
-                            // Group Name
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Group Name")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(Color(hex: "8E8E93"))
-                                
-                                TextField("", text: $groupName, prompt: Text("e.g. Office Challenge").foregroundColor(Color(hex: "8E8E93")))
-                                    .font(.system(size: 17))
-                                    .foregroundColor(.white)
-                                    .padding(16)
-                                    .background(Color(hex: "1A1A1C"))
-                                    .cornerRadius(12)
-                            }
-                            
-                            // Group Description
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Description (optional)")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(Color(hex: "8E8E93"))
-                                
-                                TextField("", text: $groupDescription, prompt: Text("What's this group about?").foregroundColor(Color(hex: "8E8E93")))
-                                    .font(.system(size: 17))
-                                    .foregroundColor(.white)
-                                    .padding(16)
-                                    .background(Color(hex: "1A1A1C"))
-                                    .cornerRadius(12)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        
-                        if !errorMessage.isEmpty {
-                            Text(errorMessage)
-                                .font(.system(size: 14))
-                                .foregroundColor(.red)
-                                .padding(.horizontal, 20)
-                        }
-                        
-                        // Create button
-                        Button(action: createGroup) {
+                        if let group = createdGroup {
+                            // Success state — show share
                             ZStack {
-                                if isCreating {
-                                    ProgressView()
-                                        .tint(.white)
-                                } else {
-                                    Text("Create Group")
+                                Circle()
+                                    .fill(Color(hex: "34C759").opacity(0.2))
+                                    .frame(width: 80, height: 80)
+                                
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(Color(hex: "34C759"))
+                            }
+                            .padding(.top, 32)
+                            
+                            Text("Group Created!")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Text("Share the link with friends to invite them")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .multilineTextAlignment(.center)
+                            
+                            Button(action: { showShareSheet = true }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Share Invite Link")
                                         .font(.system(size: 17, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(Color(hex: "34C759"))
+                                .cornerRadius(12)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
+                            
+                            Button(action: { dismiss() }) {
+                                Text("Done")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundColor(Color(hex: "8E8E93"))
+                            }
+                            .padding(.top, 8)
+                            
+                        } else {
+                            // Create form
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: "34C759").opacity(0.2))
+                                    .frame(width: 80, height: 80)
+                                
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(Color(hex: "34C759"))
+                            }
+                            .padding(.top, 32)
+                            
+                            Text("Create a Group")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Text("Compete with friends, colleagues, or family")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .multilineTextAlignment(.center)
+                            
+                            VStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Group Name")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(Color(hex: "8E8E93"))
+                                    
+                                    TextField("", text: $groupName, prompt: Text("e.g. Office Challenge").foregroundColor(Color(hex: "8E8E93")))
+                                        .font(.system(size: 17))
                                         .foregroundColor(.white)
+                                        .padding(16)
+                                        .background(Color(hex: "1A1A1C"))
+                                        .cornerRadius(12)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Description (optional)")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(Color(hex: "8E8E93"))
+                                    
+                                    TextField("", text: $groupDescription, prompt: Text("What's this group about?").foregroundColor(Color(hex: "8E8E93")))
+                                        .font(.system(size: 17))
+                                        .foregroundColor(.white)
+                                        .padding(16)
+                                        .background(Color(hex: "1A1A1C"))
+                                        .cornerRadius(12)
                                 }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(groupName.isEmpty ? Color(hex: "3A3A3C") : Color(hex: "34C759"))
-                            .cornerRadius(12)
-                        }
-                        .disabled(groupName.isEmpty || isCreating)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        
-                        // Join group link
-                        Button(action: {
-                            dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                showJoinGroup = true
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
+                            
+                            if !errorMessage.isEmpty {
+                                Text(errorMessage)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, 20)
                             }
-                        }) {
-                            Text("Already have a code? Join a group")
-                                .font(.system(size: 15))
-                                .foregroundColor(Color(hex: "34C759"))
+                            
+                            Button(action: createGroup) {
+                                ZStack {
+                                    if isCreating {
+                                        ProgressView()
+                                            .tint(.white)
+                                    } else {
+                                        Text("Create Group")
+                                            .font(.system(size: 17, weight: .semibold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(groupName.isEmpty ? Color(hex: "3A3A3C") : Color(hex: "34C759"))
+                                .cornerRadius(12)
+                            }
+                            .disabled(groupName.isEmpty || isCreating)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
+                            
+                            Button(action: {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    showJoinGroup = true
+                                }
+                            }) {
+                                Text("Have an invite link? Join a group")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Color(hex: "34C759"))
+                            }
+                            .padding(.top, 8)
                         }
-                        .padding(.top, 8)
                     }
                     .padding(.bottom, 40)
                 }
@@ -249,6 +294,13 @@ struct CreateGroupSheet: View {
                         dismiss()
                     }
                     .foregroundColor(Color(hex: "34C759"))
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let group = createdGroup {
+                    GroupShareSheet(items: [
+                        groupManager.getShareText(for: group)
+                    ])
                 }
             }
         }
@@ -264,8 +316,10 @@ struct CreateGroupSheet: View {
             isCreating = false
             
             switch result {
-            case .success:
-                dismiss()
+            case .success(let group):
+                withAnimation {
+                    createdGroup = group
+                }
             case .failure(let error):
                 errorMessage = error.localizedDescription
             }
@@ -278,9 +332,33 @@ struct JoinGroupSheet: View {
     @ObservedObject var groupManager: GroupManager
     @Environment(\.dismiss) var dismiss
     
-    @State private var joinCode = ""
+    @State private var inputText = ""
     @State private var isJoining = false
     @State private var errorMessage = ""
+    
+    private var extractedCode: String {
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Try: steplease://join/XXXXXX
+        if text.contains("steplease://join/") {
+            let parts = text.components(separatedBy: "steplease://join/")
+            if let last = parts.last {
+                let code = String(last.prefix(6)).uppercased()
+                return code
+            }
+        }
+        // Try: code=XXXXXX
+        if let range = text.range(of: "code=") {
+            let code = String(text[range.upperBound...]).prefix(6).uppercased()
+            return String(code)
+        }
+        // Raw code input
+        return String(text.prefix(6)).uppercased()
+    }
+    
+    private var isValidCode: Bool {
+        extractedCode.count == 6
+    }
     
     var body: some View {
         NavigationView {
@@ -289,7 +367,6 @@ struct JoinGroupSheet: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Icon
                         ZStack {
                             Circle()
                                 .fill(Color(hex: "007AFF").opacity(0.2))
@@ -305,27 +382,28 @@ struct JoinGroupSheet: View {
                             .font(.system(size: 24, weight: .bold))
                             .foregroundColor(.white)
                         
-                        Text("Enter the 6-digit code from a friend")
+                        Text("Paste the invite link or enter the code")
                             .font(.system(size: 15))
                             .foregroundColor(Color(hex: "8E8E93"))
                             .multilineTextAlignment(.center)
                         
-                        // Join code input
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Group Code")
+                            Text("Invite Link or Code")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color(hex: "8E8E93"))
                             
-                            TextField("", text: $joinCode, prompt: Text("e.g. ABC123").foregroundColor(Color(hex: "8E8E93")))
+                            TextField("", text: $inputText, prompt: Text("Paste link or enter code").foregroundColor(Color(hex: "8E8E93")))
                                 .font(.system(size: 17, weight: .medium))
                                 .foregroundColor(.white)
-                                .textCase(.uppercase)
                                 .padding(16)
                                 .background(Color(hex: "1A1A1C"))
                                 .cornerRadius(12)
-                                .onChange(of: joinCode) { oldValue, newValue in
-                                    joinCode = String(newValue.prefix(6)).uppercased()
-                                }
+                            
+                            if isValidCode && inputText.count > 6 {
+                                Text("Code detected: \(extractedCode)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "34C759"))
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
@@ -337,7 +415,6 @@ struct JoinGroupSheet: View {
                                 .padding(.horizontal, 20)
                         }
                         
-                        // Join button
                         Button(action: joinGroup) {
                             ZStack {
                                 if isJoining {
@@ -351,10 +428,10 @@ struct JoinGroupSheet: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(joinCode.count == 6 ? Color(hex: "007AFF") : Color(hex: "3A3A3C"))
+                            .background(isValidCode ? Color(hex: "007AFF") : Color(hex: "3A3A3C"))
                             .cornerRadius(12)
                         }
-                        .disabled(joinCode.count != 6 || isJoining)
+                        .disabled(!isValidCode || isJoining)
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
                     }
@@ -374,12 +451,12 @@ struct JoinGroupSheet: View {
     }
     
     private func joinGroup() {
-        guard joinCode.count == 6 else { return }
+        guard isValidCode else { return }
         
         isJoining = true
         errorMessage = ""
         
-        groupManager.joinGroup(inviteCode: joinCode) { result in
+        groupManager.joinGroup(inviteCode: extractedCode) { result in
             isJoining = false
             
             switch result {
@@ -402,6 +479,7 @@ struct GroupDetailsSheet: View {
     @State private var showShareSheet = false
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
+    @State private var linkCopied = false
     
     var body: some View {
         NavigationView {
@@ -440,28 +518,43 @@ struct GroupDetailsSheet: View {
                                 .padding(.horizontal, 32)
                         }
                         
-                        // Join code section
+                        // Share link section
                         VStack(spacing: 12) {
-                            Text("Invite Code")
+                            Text("Invite Friends")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color(hex: "8E8E93"))
                             
+                            // Invite link display
                             HStack(spacing: 12) {
-                                Text(group.joinCode)
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .tracking(4)
+                                Image(systemName: "link")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(Color(hex: "34C759"))
+                                
+                                Text("steplease://join/\(group.joinCode)")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundColor(Color(hex: "AEAEB2"))
+                                    .lineLimit(1)
+                                
+                                Spacer()
                                 
                                 Button(action: {
-                                    UIPasteboard.general.string = group.joinCode
+                                    UIPasteboard.general.string = groupManager.getShareText(for: group)
+                                    linkCopied = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        linkCopied = false
+                                    }
                                 }) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(Color(hex: "34C759"))
+                                    Text(linkCopied ? "Copied!" : "Copy")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(linkCopied ? .white : Color(hex: "34C759"))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(linkCopied ? Color(hex: "34C759") : Color(hex: "34C759").opacity(0.15))
+                                        .cornerRadius(8)
                                 }
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 16)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
                             .background(Color(hex: "1A1A1C"))
                             .cornerRadius(12)
                         }
@@ -473,7 +566,7 @@ struct GroupDetailsSheet: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 14, weight: .semibold))
-                                Text("Share Invite")
+                                Text("Share Invite Link")
                                     .font(.system(size: 17, weight: .semibold))
                             }
                             .foregroundColor(.white)
@@ -484,13 +577,32 @@ struct GroupDetailsSheet: View {
                         }
                         .padding(.horizontal, 20)
                         
-                        // Delete button (only for creator)
+                        // Leave / Delete
                         if group.isCreator {
                             Button(action: { showDeleteConfirmation = true }) {
                                 HStack(spacing: 8) {
                                     Image(systemName: "trash")
                                         .font(.system(size: 14, weight: .semibold))
                                     Text("Delete Group")
+                                        .font(.system(size: 17, weight: .semibold))
+                                }
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(Color(hex: "1A1A1C"))
+                                .cornerRadius(12)
+                            }
+                            .padding(.horizontal, 20)
+                        } else {
+                            Button(action: {
+                                groupManager.leaveGroup(groupId: group.id) { _ in
+                                    dismiss()
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Leave Group")
                                         .font(.system(size: 17, weight: .semibold))
                                 }
                                 .foregroundColor(.red)
@@ -516,7 +628,7 @@ struct GroupDetailsSheet: View {
             }
             .sheet(isPresented: $showShareSheet) {
                 GroupShareSheet(items: [
-                    "Join my step challenge group '\(group.name)' using code: \(group.joinCode)"
+                    groupManager.getShareText(for: group)
                 ])
             }
             .alert("Delete Group?", isPresented: $showDeleteConfirmation) {

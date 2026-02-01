@@ -30,6 +30,22 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var maxStreak: Int = 0
     @Published var bestDaySteps: Int = 0
     @Published var bestDayDate: Date? = nil
+    @Published var hourlyStepsToday: [Int] = Array(repeating: 0, count: 24)
+    @Published var hourlyStepsYesterday: [Int] = Array(repeating: 0, count: 24)
+    
+    @Published var useMetric: Bool = true // true = km/kg, false = mi/lbs
+    @Published var weekStartsMonday: Bool = true {
+        didSet {
+            // Recalculate week data when changed
+            loadDataForCurrentDate()
+        }
+    }
+    
+    var appCalendar: Calendar {
+        var cal = Calendar.current
+        cal.firstWeekday = weekStartsMonday ? 2 : 1 // 2 = Monday, 1 = Sunday
+        return cal
+    }
     
     @Published var yesterdayDistance: Double = 0.0
     @Published var yesterdayDuration: Int = 0
@@ -43,6 +59,13 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         loadDailyGoal()
+        // Load unit preference
+        if UserDefaults.standard.object(forKey: "use_metric") != nil {
+            useMetric = UserDefaults.standard.bool(forKey: "use_metric")
+        }
+        if UserDefaults.standard.object(forKey: "week_starts_monday") != nil {
+            weekStartsMonday = UserDefaults.standard.bool(forKey: "week_starts_monday")
+        }
     }
     
     func saveDailyGoal() {
@@ -134,6 +157,8 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         fetchWeekStreak()
         calculateGlobalStreak()
         fetchBestDay()
+        fetchHourlySteps(for: currentDate, isToday: true)
+        fetchHourlySteps(for: yesterdayDate, isToday: false)
     }
     
     func fetchStepsForDate(_ date: Date) {
@@ -267,11 +292,14 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func fetchWeekStreak() {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        let calendar = Calendar.current
+        let calendar = appCalendar
         
+        // Calculate week start based on appCalendar.firstWeekday
         let currentWeekday = calendar.component(.weekday, from: currentDate)
-        let daysFromMonday = currentWeekday == 1 ? 6 : currentWeekday - 2
-        let weekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: calendar.startOfDay(for: currentDate))!
+        let firstDay = calendar.firstWeekday // 2 for Monday, 1 for Sunday
+        var daysFromStart = currentWeekday - firstDay
+        if daysFromStart < 0 { daysFromStart += 7 }
+        let weekStart = calendar.date(byAdding: .day, value: -daysFromStart, to: calendar.startOfDay(for: currentDate))!
         
         let today = Date()
         let todayStart = calendar.startOfDay(for: today)
@@ -425,6 +453,47 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             if let best = daySteps.max(by: { $0.steps < $1.steps }) {
                 self.bestDaySteps = best.steps
                 self.bestDayDate = best.date
+            }
+        }
+    }
+    
+    // MARK: - Fetch Hourly Steps for Day Progress Chart
+    func fetchHourlySteps(for date: Date, isToday: Bool) {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        
+        let group = DispatchGroup()
+        var hourlyResults = Array(repeating: 0, count: 24)
+        let lock = NSLock()
+        
+        for hour in 0..<24 {
+            let hourStart = calendar.date(byAdding: .hour, value: hour, to: dayStart)!
+            let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart)!
+            
+            group.enter()
+            
+            let predicate = HKQuery.predicateForSamples(withStart: hourStart, end: hourEnd, options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                defer { group.leave() }
+                
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    lock.lock()
+                    hourlyResults[hour] = steps
+                    lock.unlock()
+                }
+            }
+            
+            self.healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            if isToday {
+                self.hourlyStepsToday = hourlyResults
+            } else {
+                self.hourlyStepsYesterday = hourlyResults
             }
         }
     }

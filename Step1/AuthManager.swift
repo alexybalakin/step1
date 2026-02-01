@@ -12,7 +12,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import GoogleSignIn
 
-class AuthManager: ObservableObject {
+class AuthManager: NSObject, ObservableObject {
     @Published var isAuthenticated = false
     @Published var userID: String = ""
     @Published var userName: String = ""
@@ -27,7 +27,8 @@ class AuthManager: ObservableObject {
     
     private let db = Firestore.firestore()
     
-    init() {
+    override init() {
+        super.init()
         checkAuthStatus()
         // FIX #2: Fix existing duplicate names on app launch
         fixDuplicateNames()
@@ -241,6 +242,17 @@ class AuthManager: ObservableObject {
     }
     
     // MARK: - Handle Sign in with Apple
+    // MARK: - Apple Sign In (programmatic trigger)
+    func signInWithApple() {
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+        
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.performRequests()
+    }
+    
     func handleSignInWithApple(result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authorization):
@@ -559,5 +571,16 @@ class AuthManager: ObservableObject {
                 }
             }
         }
+    }
+}
+
+// MARK: - ASAuthorizationControllerDelegate
+extension AuthManager: ASAuthorizationControllerDelegate {
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        handleSignInWithApple(result: .success(authorization))
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        handleSignInWithApple(result: .failure(error))
     }
 }

@@ -321,8 +321,39 @@ class GroupManager: ObservableObject {
         return String((0..<6).map { _ in letters.randomElement()! })
     }
     
-    // MARK: - Generate Share Link
-    func getShareLink(for group: CustomGroup) -> String {
-        return "Join my group '\(group.name)' on StePlease! Use code: \(group.inviteCode)"
+    // MARK: - Generate Share Link (link-only, no code needed)
+    func getShareLink(for group: CustomGroup) -> URL {
+        // URL scheme for deep linking within the app
+        return URL(string: "steplease://join/\(group.inviteCode)")!
+    }
+    
+    func getAppStoreLink() -> String {
+        return "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
+    }
+    
+    func getShareText(for group: CustomGroup) -> String {
+        // Share message with both deep link and App Store link
+        return "Join my group \"\(group.name)\" on StePlease! 🚶‍♂️\n\n\(getAppStoreLink())\n\nAfter installing, open this link to join:\nsteplease://join/\(group.inviteCode)"
+    }
+    
+    // MARK: - Join Group by Deep Link
+    func joinGroupFromLink(code: String, completion: @escaping (Result<CustomGroup, Error>) -> Void) {
+        joinGroup(inviteCode: code, completion: completion)
+    }
+    
+    // MARK: - Parse deep link URL
+    func parseJoinURL(_ url: URL) -> String? {
+        // Handle: steplease://join/XXXXXX
+        if url.scheme == "steplease" && url.host == "join" {
+            let code = url.pathComponents.last ?? ""
+            return code.isEmpty ? nil : code
+        }
+        // Handle: steplease://join?code=XXXXXX
+        if url.scheme == "steplease",
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let codeItem = components.queryItems?.first(where: { $0.name == "code" }) {
+            return codeItem.value
+        }
+        return nil
     }
 }

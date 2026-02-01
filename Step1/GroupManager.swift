@@ -323,8 +323,7 @@ class GroupManager: ObservableObject {
     
     // MARK: - Generate Share Link (link-only, no code needed)
     func getShareLink(for group: CustomGroup) -> URL {
-        // URL scheme for deep linking within the app
-        return URL(string: "steplease://join/\(group.inviteCode)")!
+        return URL(string: "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873")!
     }
     
     func getAppStoreLink() -> String {
@@ -332,8 +331,7 @@ class GroupManager: ObservableObject {
     }
     
     func getShareText(for group: CustomGroup) -> String {
-        // Share message with both deep link and App Store link
-        return "Join my group \"\(group.name)\" on StePlease! 🚶‍♂️\n\n\(getAppStoreLink())\n\nAfter installing, open this link to join:\nsteplease://join/\(group.inviteCode)"
+        return "Join my group \"\(group.name)\" on StePlease! 🚶‍♂️\n\n\(getAppStoreLink())\n\nInvite code: \(group.inviteCode)"
     }
     
     // MARK: - Join Group by Deep Link

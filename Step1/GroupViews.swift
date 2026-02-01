@@ -524,21 +524,22 @@ struct GroupDetailsSheet: View {
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(Color(hex: "8E8E93"))
                             
-                            // Invite link display
+                            // Invite code display
                             HStack(spacing: 12) {
-                                Image(systemName: "link")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(hex: "34C759"))
-                                
-                                Text("steplease://join/\(group.joinCode)")
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .foregroundColor(Color(hex: "AEAEB2"))
-                                    .lineLimit(1)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Invite Code")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(hex: "8E8E93"))
+                                    Text(group.joinCode)
+                                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .tracking(3)
+                                }
                                 
                                 Spacer()
                                 
                                 Button(action: {
-                                    UIPasteboard.general.string = groupManager.getShareText(for: group)
+                                    UIPasteboard.general.string = group.joinCode
                                     linkCopied = true
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                         linkCopied = false

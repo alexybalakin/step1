@@ -1541,9 +1541,19 @@ struct CalendarOverlayView: View {
     @Binding var isPresented: Bool
     @State private var displayedMonth: Date = Date()
     
-    let calendar = Calendar.current
+    var calendar: Calendar {
+        healthManager.appCalendar
+    }
+    
     let columns = Array(repeating: GridItem(.flexible()), count: 7)
-    let weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    
+    var weekdays: [String] {
+        if healthManager.weekStartsMonday {
+            return ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+        } else {
+            return ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+        }
+    }
     
     var canGoForward: Bool {
         let nextMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
@@ -1563,9 +1573,11 @@ struct CalendarOverlayView: View {
         let firstDay = interval.start
         
         var weekday = calendar.component(.weekday, from: firstDay)
-        weekday = weekday == 1 ? 7 : weekday - 1
+        let firstWeekday = calendar.firstWeekday
+        var offset = weekday - firstWeekday
+        if offset < 0 { offset += 7 }
         
-        var days: [Date?] = Array(repeating: nil, count: weekday - 1)
+        var days: [Date?] = Array(repeating: nil, count: offset)
         
         var current = firstDay
         while current < interval.end {
@@ -1578,18 +1590,17 @@ struct CalendarOverlayView: View {
     
     var body: some View {
         ZStack(alignment: .top) {
-            // Semi-transparent overlay
             Color.black.opacity(0.6)
                 .ignoresSafeArea()
                 .onTapGesture {
                     isPresented = false
                 }
             
-            // Calendar card
             calendarCard
         }
         .onAppear {
             displayedMonth = selectedDate
+            healthManager.fetchMonthProgress(for: displayedMonth)
         }
     }
     
@@ -1610,6 +1621,7 @@ struct CalendarOverlayView: View {
         HStack {
             Button(action: {
                 displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                healthManager.fetchMonthProgress(for: displayedMonth)
             }) {
                 Image(systemName: "chevron.left")
                     .foregroundColor(.white)
@@ -1628,6 +1640,7 @@ struct CalendarOverlayView: View {
             Button(action: {
                 if canGoForward {
                     displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                    healthManager.fetchMonthProgress(for: displayedMonth)
                 }
             }) {
                 Image(systemName: "chevron.right")
@@ -1658,7 +1671,7 @@ struct CalendarOverlayView: View {
                     CalendarDayButton(
                         date: unwrappedDate,
                         isSelected: calendar.isDate(unwrappedDate, inSameDayAs: selectedDate),
-                        isCompleted: checkDayCompleted(unwrappedDate),
+                        progress: healthManager.progressForDate(unwrappedDate),
                         isToday: calendar.isDateInToday(unwrappedDate),
                         isFuture: unwrappedDate > Date()
                     ) {
@@ -1669,7 +1682,7 @@ struct CalendarOverlayView: View {
                     }
                 } else {
                     Color.clear
-                        .frame(height: 36)
+                        .frame(height: 40)
                 }
             }
         }
@@ -1684,10 +1697,12 @@ struct CalendarOverlayView: View {
 struct CalendarDayButton: View {
     let date: Date
     let isSelected: Bool
-    let isCompleted: Bool
+    let progress: Double  // 0.0 to 1.0+
     let isToday: Bool
     let isFuture: Bool
     let action: () -> Void
+    
+    var isCompleted: Bool { progress >= 1.0 }
     
     var dayNumber: String {
         let formatter = DateFormatter()
@@ -1698,28 +1713,71 @@ struct CalendarDayButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Today ring
-                if isToday {
-                    Circle()
-                        .stroke(Color(hex: "34C759"), lineWidth: 2)
-                        .frame(width: 36, height: 36)
-                }
-                
-                // Selected fill
-                if isSelected {
+                if isFuture {
+                    // Future — no ring, dim text
+                    Text(dayNumber)
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(Color(hex: "3A3A3C"))
+                } else if isSelected {
+                    // Selected day — green filled circle
                     Circle()
                         .fill(Color(hex: "34C759"))
                         .frame(width: 36, height: 36)
+                    
+                    Text(dayNumber)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.black)
+                } else if isCompleted {
+                    // Goal reached — green filled circle
+                    Circle()
+                        .fill(Color(hex: "34C759"))
+                        .frame(width: 36, height: 36)
+                    
+                    Text(dayNumber)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.black)
+                } else if progress > 0 {
+                    // Partial progress — ring showing how much done
+                    ZStack {
+                        // Background ring (track)
+                        Circle()
+                            .stroke(Color(hex: "2A2A2C"), lineWidth: 3)
+                            .frame(width: 36, height: 36)
+                        
+                        // Progress ring
+                        Circle()
+                            .trim(from: 0, to: min(progress, 1.0))
+                            .stroke(
+                                Color(hex: "34C759").opacity(0.7),
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                            )
+                            .frame(width: 36, height: 36)
+                            .rotationEffect(.degrees(-90))
+                        
+                        Text(dayNumber)
+                            .font(.system(size: 15, weight: isToday ? .semibold : .regular))
+                            .foregroundColor(.white)
+                    }
+                } else {
+                    // No steps — plain
+                    if isToday {
+                        Circle()
+                            .stroke(Color(hex: "3A3A3C"), lineWidth: 2)
+                            .frame(width: 36, height: 36)
+                    }
+                    
+                    Text(dayNumber)
+                        .font(.system(size: 15, weight: isToday ? .semibold : .regular))
+                        .foregroundColor(isToday ? .white : Color(hex: "8E8E93"))
                 }
                 
-                Text(dayNumber)
-                    .font(.system(size: 16, weight: isSelected || isToday ? .semibold : .regular))
-                    .foregroundColor(
-                        isFuture ? Color(hex: "3A3A3C") :
-                        isSelected ? .black :
-                        isCompleted ? Color(hex: "34C759") :
-                        .white
-                    )
+                // Today indicator dot
+                if isToday && !isSelected {
+                    Circle()
+                        .fill(Color(hex: "34C759"))
+                        .frame(width: 4, height: 4)
+                        .offset(y: 16)
+                }
             }
             .frame(width: 40, height: 40)
         }

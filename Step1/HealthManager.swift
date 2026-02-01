@@ -538,6 +538,63 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return false
         }
     
+    // MARK: - Calendar day progress cache
+    @Published var dayProgressCache: [String: Double] = [:] // "yyyy-MM-dd" -> progress 0.0...1.0+
+    
+    func fetchMonthProgress(for month: Date) {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        guard let interval = calendar.dateInterval(of: .month, for: month) else { return }
+        
+        let today = calendar.startOfDay(for: Date())
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        
+        var tempCache: [String: Double] = [:]
+        let group = DispatchGroup()
+        
+        var current = interval.start
+        while current < interval.end && current <= today {
+            let dayStart = current
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            let dateKey = formatter.string(from: dayStart)
+            
+            group.enter()
+            
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    let steps = sum.doubleValue(for: HKUnit.count())
+                    let progress = self.dailyGoal > 0 ? steps / Double(self.dailyGoal) : 0
+                    tempCache[dateKey] = progress
+                } else {
+                    tempCache[dateKey] = 0
+                }
+            }
+            healthStore.execute(query)
+            current = dayEnd
+        }
+        
+        group.notify(queue: .main) {
+            self.dayProgressCache.merge(tempCache) { _, new in new }
+        }
+    }
+    
+    func progressForDate(_ date: Date) -> Double {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let key = formatter.string(from: date)
+        
+        // For current date use live data
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: currentDate) {
+            return dailyGoal > 0 ? Double(steps) / Double(dailyGoal) : 0
+        }
+        
+        return dayProgressCache[key] ?? 0
+    }
+    
     // MARK: - Get historical steps for Firestore sync
     func getHistoricalSteps(days: Int = 30, completion: @escaping ([String: Int]) -> Void) {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!

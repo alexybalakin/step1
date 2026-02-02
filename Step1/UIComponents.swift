@@ -1399,25 +1399,28 @@ struct TopNavigationView: View {
                     Circle()
                         .fill(Color(hex: "0A0A0A").opacity(0.95))
                     
-                    Circle()
-                        .stroke(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.25), location: 0),
-                                    .init(color: Color.white.opacity(0.1), location: 0.5),
-                                    .init(color: Color.white.opacity(0.02), location: 1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                    
                     if let auth = authManager, !auth.isAnonymous, !auth.userName.isEmpty {
+                        Circle()
+                            .fill(Color(hex: "34C759"))
+                        
                         Text(String(auth.userName.prefix(1)).uppercased())
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                     } else {
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.25), location: 0),
+                                        .init(color: Color.white.opacity(0.1), location: 0.5),
+                                        .init(color: Color.white.opacity(0.02), location: 1)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
+                        
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 20, weight: .medium))
                             .foregroundColor(.white)
@@ -1428,36 +1431,32 @@ struct TopNavigationView: View {
             
             Spacer()
             
-            // Center - Date switcher
+            // Center - D/W/M period switcher
             HStack(spacing: 0) {
-                Button(action: {
-                    changeDate(by: -1)
-                }) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(.white)
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 44, height: 44)
+                ForEach(0..<3, id: \.self) { index in
+                    let labels = ["D", "W", "M"]
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedPeriod = index
+                        }
+                    }) {
+                        ZStack {
+                            if selectedPeriod == index {
+                                Circle()
+                                    .fill(Color(hex: "1A1A1A"))
+                                    .frame(width: 36, height: 36)
+                            }
+                            
+                            Text(labels[index])
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(selectedPeriod == index ? .white : Color(hex: "8E8E93"))
+                        }
+                        .frame(width: 36, height: 36)
+                    }
                 }
-                
-                Button(action: {
-                    showCalendar = true
-                }) {
-                    Text(dateString)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(minWidth: 80)
-                }
-                
-                Button(action: {
-                    changeDate(by: 1)
-                }) {
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .disabled(!canGoForward)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
             .background(
                 ZStack {
                     Capsule()
@@ -1484,7 +1483,7 @@ struct TopNavigationView: View {
             
             // Right - Options button
             Button(action: {
-                // Options action - placeholder
+                showCalendar = true
             }) {
                 ZStack {
                     Circle()
@@ -1792,6 +1791,11 @@ struct CircularProgressView: View {
     let progress: Double
     let percentage: String
     let goalReached: Bool
+    let dateLabel: String  // "Today", "Yesterday", "16 Jan 26"
+    let isToday: Bool
+    let onSwipeLeft: () -> Void
+    let onSwipeRight: () -> Void
+    let canGoRight: Bool
     
     var goalMultiplier: Int {
         guard goal > 0 else { return 0 }
@@ -1816,24 +1820,22 @@ struct CircularProgressView: View {
     
     var body: some View {
         HStack(spacing: 24) {
-            // Left dot
+            // Left dot — always visible, tap to go back
             Circle()
                 .fill(Color(hex: "B8B8B8"))
                 .frame(width: 8, height: 8)
+                .onTapGesture { onSwipeLeft() }
             
             // Main circle container
             ZStack {
-                // Background container
                 Circle()
                     .fill(Color(hex: "101010"))
                     .frame(width: containerSize, height: containerSize)
                 
-                // Gray track circle - stroke center, diameter 270
                 Circle()
                     .stroke(Color(hex: "1A1A1A"), lineWidth: strokeWidth)
                     .frame(width: circleSize, height: circleSize)
                 
-                // Green progress circle - stroke center, diameter 270, color 00CA48
                 if goalMultiplier == 0 {
                     Circle()
                         .trim(from: 0, to: progress)
@@ -1845,12 +1847,10 @@ struct CircularProgressView: View {
                         .rotationEffect(.degrees(-90))
                         .animation(.easeInOut(duration: 1), value: progress)
                 } else {
-                    // Full circle when goal reached
                     Circle()
                         .stroke(Color(hex: "00CA48"), lineWidth: strokeWidth)
                         .frame(width: circleSize, height: circleSize)
                     
-                    // Thin inner progress circle for over-goal, diameter 250, 2px
                     if currentProgress > 0 {
                         Circle()
                             .trim(from: 0, to: currentProgress)
@@ -1864,12 +1864,9 @@ struct CircularProgressView: View {
                     }
                 }
                 
-                // Center content - VStack with 16px gap, 5 elements
                 VStack(spacing: 16) {
-                    // 1. Top badge container 34x34
                     ZStack {
                         if goalReached {
-                            // Green circle 28x28 with checkmark or multiplier
                             Circle()
                                 .fill(Color(hex: "00CA48"))
                                 .frame(width: 28, height: 28)
@@ -1887,23 +1884,20 @@ struct CircularProgressView: View {
                     }
                     .frame(width: 34, height: 34)
                     
-                    // 2. Top label - "Steplease" or "Goal Achieved"
-                    Text(goalReached ? "Goal Achieved" : "Steplease")
+                    // Date label — "Today", "Yesterday", or date
+                    Text(goalReached ? "Goal Achieved" : dateLabel)
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(goalReached ? Color(hex: "00CA48") : Color(hex: "8E8E93"))
                     
-                    // 3. Steps number - SF Pro Display, bold, 44px
                     Text("\(steps.formatted())")
                         .font(.system(size: 44, weight: .bold))
                         .foregroundColor(.white)
                         .contentTransition(.numericText())
                     
-                    // 4. Goal label - SF Mono, 14px, regular
-                    Text("Goal \(goal.formatted()) steps")
+                    Text("Goal \(goal.formatted())")
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(Color(hex: "8E8E93"))
                     
-                    // 5. Bottom chevron container 34x34
                     ZStack {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .medium))
@@ -1913,11 +1907,24 @@ struct CircularProgressView: View {
                 }
             }
             .frame(width: containerSize, height: containerSize)
+            .gesture(
+                DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                    .onEnded { value in
+                        if value.translation.width < -30 {
+                            onSwipeLeft()
+                        } else if value.translation.width > 30 {
+                            onSwipeRight()
+                        }
+                    }
+            )
             
-            // Right dot
+            // Right dot — dim if today (can't go forward)
             Circle()
-                .fill(Color(hex: "B8B8B8"))
+                .fill(Color(hex: canGoRight ? "B8B8B8" : "1F1F1F"))
                 .frame(width: 8, height: 8)
+                .onTapGesture {
+                    if canGoRight { onSwipeRight() }
+                }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 20)
@@ -1984,10 +1991,10 @@ struct StreakTile: View {
             // Current streak value
             HStack(spacing: 2) {
                 Text("\(currentStreak)")
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(currentStreak > 0 ? .white : Color(hex: "8E8E93"))
                 Text(" 🔥")
-                    .font(.system(size: 22))
+                    .font(.system(size: 16))
                     .opacity(currentStreak > 0 ? 1.0 : 0.5)
             }
             
@@ -1998,7 +2005,7 @@ struct StreakTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(hex: "101010"))
+        .background(Color(hex: "121212"))
         .cornerRadius(20)
     }
 }
@@ -2031,7 +2038,7 @@ struct BestDayTile: View {
             
             // Best steps value
             Text("\(bestSteps.formatted())")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.white)
             
             // Date of best day
@@ -2041,7 +2048,7 @@ struct BestDayTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(hex: "101010"))
+        .background(Color(hex: "121212"))
         .cornerRadius(20)
     }
 }
@@ -2063,103 +2070,216 @@ struct StepMetricTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(hex: "101010"))
+        .background(Color(hex: "121212"))
         .cornerRadius(20)
     }
 }
 
-// MARK: - Day Progress Chart
-struct DayProgressChart: View {
-    let hourlyStepsToday: [Int]     // 24 values, one per hour
-    let hourlyStepsYesterday: [Int] // 24 values, one per hour
+// MARK: - Combined Progress Card (Day / Week toggle)
+struct ProgressCardView: View {
+    let hourlyStepsToday: [Int]
+    let hourlyStepsYesterday: [Int]
+    let weekProgress: [Double]  // 0.0-1.0+ for each day of week
+    let weekStartsMonday: Bool
+    let currentDayIndex: Int    // 0-6, which day of week is today
+    
+    @State private var selectedPage = 0  // 0 = Day, 1 = Week
     
     private let chartHeight: CGFloat = 72
-    private let hours = [0, 6, 12, 18, 24]
-    
-    private var maxSteps: Int {
-        let maxToday = hourlyStepsToday.max() ?? 0
-        let maxYesterday = hourlyStepsYesterday.max() ?? 0
-        return max(maxToday, maxYesterday, 1)
-    }
-    
-    private func barHeight(steps: Int, isPlaceholder: Bool = false) -> CGFloat {
-        if steps == 0 {
-            return isPlaceholder ? 4 : 2
-        }
-        let ratio = CGFloat(steps) / CGFloat(maxSteps)
-        return max(4, ratio * chartHeight)
-    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Header with dots
             HStack(spacing: 10) {
-                Text("Day progress")
+                Text(selectedPage == 0 ? "Day progress" : "Week Progress")
                     .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundColor(Color(hex: "8E8E93"))
                 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "8E8E93"))
-            }
-            
-            VStack(spacing: 4) {
-                // Bars - use GeometryReader to fill full width
-                GeometryReader { geo in
-                    HStack(alignment: .bottom, spacing: 5) {
-                        ForEach(0..<24, id: \.self) { hour in
-                            ZStack(alignment: .bottom) {
-                                // Yesterday bar (shadow)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color(hex: "373737"))
-                                    .frame(
-                                        height: barHeight(
-                                            steps: hourlyStepsYesterday[hour],
-                                            isPlaceholder: true
-                                        )
-                                    )
-                                
-                                // Today bar (green, on top)
-                                if hourlyStepsToday[hour] > 0 {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color(hex: "00CA48"))
-                                        .frame(
-                                            height: barHeight(steps: hourlyStepsToday[hour])
-                                        )
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
+                
+                Spacer()
+                
+                // Page indicator dots
+                HStack(spacing: 6) {
+                    ForEach(0..<4, id: \.self) { index in
+                        Circle()
+                            .fill(index == selectedPage ? Color(hex: "BFBFBF") : Color(hex: "3A3A3C"))
+                            .frame(width: 6, height: 6)
                     }
                 }
-                .frame(height: chartHeight)
-                
-                // Hour labels
-                HStack {
-                    Text("0")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
-                    Text("6")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
-                    Text("12")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
-                    Text("18")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
-                    Text("24")
+                .padding(.vertical, 4)
+            }
+            
+            if selectedPage == 0 {
+                dayProgressContent
+            } else {
+                weekProgressContent
+            }
+        }
+        .padding(16)
+        .background(Color(hex: "121212"))
+        .cornerRadius(20)
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                selectedPage = selectedPage == 0 ? 1 : 0
+            }
+        }
+    }
+    
+    // MARK: - Day Progress (hourly bars)
+    private var dayProgressContent: some View {
+        let maxSteps = max(hourlyStepsToday.max() ?? 1, hourlyStepsYesterday.max() ?? 1, 1)
+        
+        return VStack(spacing: 4) {
+            GeometryReader { geo in
+                HStack(alignment: .bottom, spacing: 5) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(hex: "373737"))
+                                .frame(height: barHeight(steps: hourlyStepsYesterday[hour], max: maxSteps, placeholder: true))
+                            
+                            if hourlyStepsToday[hour] > 0 {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color(hex: "00CA48"))
+                                    .frame(height: barHeight(steps: hourlyStepsToday[hour], max: maxSteps))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .frame(height: chartHeight)
+            
+            HStack {
+                ForEach(["0", "6", "12", "18", "24"], id: \.self) { label in
+                    if label != "0" { Spacer() }
+                    Text(label)
                         .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundColor(Color(hex: "8E8E93"))
                 }
             }
         }
-        .padding(16)
-        .background(Color(hex: "101010"))
-        .cornerRadius(20)
+    }
+    
+    // MARK: - Week Progress (line chart)
+    private var weekProgressContent: some View {
+        let dayLabels: [String] = weekStartsMonday ?
+            ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] :
+            ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        
+        let maxProgress = max(weekProgress.max() ?? 1.0, 1.0)
+        
+        return VStack(spacing: 4) {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let height = geo.size.height
+                let stepX = width / 6
+                
+                // Goal line Y position (progress = 1.0)
+                let goalY = height - (height * (1.0 / maxProgress))
+                
+                ZStack(alignment: .topLeading) {
+                    // Vertical grid lines
+                    ForEach(0..<7, id: \.self) { i in
+                        Rectangle()
+                            .fill(Color(hex: "1A1A1A"))
+                            .frame(width: 1, height: height)
+                            .offset(x: CGFloat(i) * stepX)
+                    }
+                    
+                    // Goal dashed line
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: goalY))
+                        path.addLine(to: CGPoint(x: width, y: goalY))
+                    }
+                    .stroke(
+                        Color(hex: "34C759").opacity(0.4),
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                    )
+                    
+                    // Green line + gradient fill
+                    let points: [CGPoint] = (0..<7).map { i in
+                        let x = CGFloat(i) * stepX
+                        let prog = min(weekProgress[i], maxProgress)
+                        let y = height - (height * (prog / maxProgress))
+                        return CGPoint(x: x, y: y)
+                    }
+                    
+                    // Gradient fill under line
+                    Path { path in
+                        guard !points.isEmpty else { return }
+                        path.move(to: CGPoint(x: points[0].x, y: height))
+                        path.addLine(to: points[0])
+                        for i in 1..<points.count {
+                            path.addLine(to: points[i])
+                        }
+                        path.addLine(to: CGPoint(x: points.last!.x, y: height))
+                        path.closeSubpath()
+                    }
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "34C759").opacity(0.3), Color(hex: "34C759").opacity(0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    
+                    // Green line
+                    Path { path in
+                        guard !points.isEmpty else { return }
+                        path.move(to: points[0])
+                        for i in 1..<points.count {
+                            path.addLine(to: points[i])
+                        }
+                    }
+                    .stroke(Color(hex: "34C759"), lineWidth: 2)
+                    
+                    // Dots on each day
+                    ForEach(0..<7, id: \.self) { i in
+                        let x = CGFloat(i) * stepX
+                        let prog = min(weekProgress[i], maxProgress)
+                        let y = height - (height * (prog / maxProgress))
+                        let isGoalMet = weekProgress[i] >= 1.0
+                        
+                        ZStack {
+                            if i == currentDayIndex {
+                                // Today — outer ring
+                                Circle()
+                                    .stroke(Color.white.opacity(0.4), lineWidth: 2)
+                                    .frame(width: 10, height: 10)
+                            }
+                            
+                            Circle()
+                                .fill(isGoalMet ? Color(hex: "34C759") : Color(hex: "B8B8B8"))
+                                .frame(width: 6, height: 6)
+                        }
+                        .position(x: x, y: y)
+                    }
+                }
+            }
+            .frame(height: chartHeight)
+            
+            // Day labels
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(dayLabels[i])
+                        .font(.system(size: 10, weight: i == currentDayIndex ? .semibold : .regular, design: .monospaced))
+                        .foregroundColor(i == currentDayIndex ? .white : Color(hex: "8E8E93"))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+    
+    private func barHeight(steps: Int, max: Int, placeholder: Bool = false) -> CGFloat {
+        if steps == 0 {
+            return placeholder ? 4 : 2
+        }
+        let ratio = CGFloat(steps) / CGFloat(max)
+        return Swift.max(4, ratio * chartHeight)
     }
 }
 

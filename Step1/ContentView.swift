@@ -172,6 +172,47 @@ struct MainAppView: View {
     @Binding var lastDate: Date
     @State private var isRefreshing = false
     
+    var dateLabel: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(currentDate) {
+            return "Today"
+        } else if calendar.isDateInYesterday(currentDate) {
+            return "Yesterday"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "d MMM yy"
+            formatter.locale = Locale(identifier: "en_US")
+            return formatter.string(from: currentDate)
+        }
+    }
+    
+    var canGoForward: Bool {
+        let calendar = Calendar.current
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
+        return calendar.startOfDay(for: tomorrow) <= calendar.startOfDay(for: Date())
+    }
+    
+    var currentDayOfWeekIndex: Int {
+        let calendar = healthManager.appCalendar
+        let weekday = calendar.component(.weekday, from: Date())
+        let firstDay = calendar.firstWeekday
+        var index = weekday - firstDay
+        if index < 0 { index += 7 }
+        return index
+    }
+    
+    func changeDate(by value: Int) {
+        let calendar = Calendar.current
+        let newDate = calendar.date(byAdding: .day, value: value, to: currentDate) ?? currentDate
+        if newDate <= Date() {
+            withAnimation {
+                currentDate = newDate
+                healthManager.currentDate = newDate
+                healthManager.loadDataForCurrentDate()
+            }
+        }
+    }
+    
     var body: some View {
         ZStack {
             Color(hex: "0A0A0A")
@@ -194,25 +235,16 @@ struct MainAppView: View {
                                 goal: healthManager.dailyGoal,
                                 progress: healthManager.progress,
                                 percentage: healthManager.percentageOverGoal,
-                                goalReached: healthManager.goalReached
+                                goalReached: healthManager.goalReached,
+                                dateLabel: dateLabel,
+                                isToday: Calendar.current.isDateInToday(currentDate),
+                                onSwipeLeft: { changeDate(by: -1) },
+                                onSwipeRight: { changeDate(by: 1) },
+                                canGoRight: canGoForward
                             )
                             .onTapGesture {
                                 showGoalEditor = true
                             }
-                            
-                            // Streak + Best Day tiles
-                            HStack(spacing: 8) {
-                                StreakTile(
-                                    currentStreak: healthManager.streakCount,
-                                    maxStreak: healthManager.maxStreak
-                                )
-                                
-                                BestDayTile(
-                                    bestSteps: healthManager.bestDaySteps,
-                                    bestDate: healthManager.bestDayDate
-                                )
-                            }
-                            .padding(.horizontal, 16)
                             
                             // Distance / Time / Calories tiles
                             HStack(spacing: 8) {
@@ -270,13 +302,30 @@ struct MainAppView: View {
                                 )
                             }
                             .padding(.horizontal, 16)
+                            
+                            // Progress Card (Day / Week toggle)
+                            ProgressCardView(
+                                hourlyStepsToday: healthManager.hourlyStepsToday,
+                                hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
+                                weekProgress: healthManager.weekProgress,
+                                weekStartsMonday: healthManager.weekStartsMonday,
+                                currentDayIndex: currentDayOfWeekIndex
+                            )
+                            .padding(.horizontal, 16)
                             .padding(.top, 8)
                             
-                            // Day Progress Chart
-                            DayProgressChart(
-                                hourlyStepsToday: healthManager.hourlyStepsToday,
-                                hourlyStepsYesterday: healthManager.hourlyStepsYesterday
-                            )
+                            // Streak + Best Day tiles
+                            HStack(spacing: 8) {
+                                StreakTile(
+                                    currentStreak: healthManager.streakCount,
+                                    maxStreak: healthManager.maxStreak
+                                )
+                                
+                                BestDayTile(
+                                    bestSteps: healthManager.bestDaySteps,
+                                    bestDate: healthManager.bestDayDate
+                                )
+                            }
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
                             .padding(.bottom, 100)

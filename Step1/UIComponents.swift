@@ -1791,11 +1791,15 @@ struct CircularProgressView: View {
     let progress: Double
     let percentage: String
     let goalReached: Bool
-    let dateLabel: String  // "Today", "Yesterday", "16 Jan 26"
+    let dateLabel: String
     let isToday: Bool
-    let onSwipeLeft: () -> Void
-    let onSwipeRight: () -> Void
-    let canGoRight: Bool
+    let onGoBack: () -> Void      // go to older day
+    let onGoForward: () -> Void   // go to newer day
+    let canGoBack: Bool           // can go further into past (max 7 days)
+    let canGoForward: Bool        // can go to newer day (false if today)
+    
+    @State private var dragOffset: CGFloat = 0
+    @State private var swipeDirection: Int = 0
     
     var goalMultiplier: Int {
         guard goal > 0 else { return 0 }
@@ -1804,14 +1808,11 @@ struct CircularProgressView: View {
     
     var currentProgress: Double {
         guard goal > 0 else { return 0 }
-        if goalMultiplier == 0 {
-            return progress
-        }
+        if goalMultiplier == 0 { return progress }
         let remainder = steps % goal
         return Double(remainder) / Double(goal)
     }
     
-    // Circle specs
     private let containerSize: CGFloat = 280
     private let circleSize: CGFloat = 270
     private let strokeWidth: CGFloat = 10
@@ -1820,13 +1821,18 @@ struct CircularProgressView: View {
     
     var body: some View {
         HStack(spacing: 24) {
-            // Left dot — always visible, tap to go back
+            // Left dot — dim if can't go further back
             Circle()
-                .fill(Color(hex: "B8B8B8"))
+                .fill(Color(hex: canGoBack ? "B8B8B8" : "1F1F1F"))
                 .frame(width: 8, height: 8)
-                .onTapGesture { onSwipeLeft() }
+                .onTapGesture {
+                    if canGoBack {
+                        swipeDirection = -1
+                        withAnimation(.easeInOut(duration: 0.3)) { onGoBack() }
+                    }
+                }
             
-            // Main circle container
+            // Main circle
             ZStack {
                 Circle()
                     .fill(Color(hex: "101010"))
@@ -1884,8 +1890,7 @@ struct CircularProgressView: View {
                     }
                     .frame(width: 34, height: 34)
                     
-                    // Date label — "Today", "Yesterday", or date
-                    Text(goalReached ? "Goal Achieved" : dateLabel)
+                    Text(dateLabel)
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(goalReached ? Color(hex: "00CA48") : Color(hex: "8E8E93"))
                     
@@ -1905,25 +1910,59 @@ struct CircularProgressView: View {
                     }
                     .frame(width: 34, height: 34)
                 }
+                .id(dateLabel)
+                .transition(.asymmetric(
+                    insertion: .move(edge: swipeDirection <= 0 ? .leading : .trailing).combined(with: .opacity),
+                    removal: .move(edge: swipeDirection <= 0 ? .trailing : .leading).combined(with: .opacity)
+                ))
             }
             .frame(width: containerSize, height: containerSize)
+            .clipShape(Circle())
+            .offset(x: dragOffset)
             .gesture(
-                DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                    .onChanged { value in
+                        let t = value.translation.width
+                        // Swipe right = go back (older), swipe left = go forward (newer)
+                        if t > 0 && canGoBack {
+                            dragOffset = t * 0.3
+                        } else if t < 0 && canGoForward {
+                            dragOffset = t * 0.3
+                        }
+                    }
                     .onEnded { value in
-                        if value.translation.width < -30 {
-                            onSwipeLeft()
-                        } else if value.translation.width > 30 {
-                            onSwipeRight()
+                        let threshold: CGFloat = 50
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                        // Swipe right (finger moves right) = go to older day
+                        if value.translation.width > threshold && canGoBack {
+                            swipeDirection = -1
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                onGoBack()
+                            }
+                        }
+                        // Swipe left (finger moves left) = go to newer day
+                        else if value.translation.width < -threshold && canGoForward {
+                            swipeDirection = 1
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                onGoForward()
+                            }
                         }
                     }
             )
             
             // Right dot — dim if today (can't go forward)
             Circle()
-                .fill(Color(hex: canGoRight ? "B8B8B8" : "1F1F1F"))
+                .fill(Color(hex: canGoForward ? "B8B8B8" : "1F1F1F"))
                 .frame(width: 8, height: 8)
                 .onTapGesture {
-                    if canGoRight { onSwipeRight() }
+                    if canGoForward {
+                        swipeDirection = 1
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            onGoForward()
+                        }
+                    }
                 }
         }
         .padding(.horizontal, 16)
@@ -2075,25 +2114,238 @@ struct StepMetricTile: View {
     }
 }
 
+// MARK: - Week Summary Card (W tab)
+struct WeekSummaryView: View {
+    let totalSteps: Int
+    let dailySteps: [Int]       // 7 values Mon-Sun
+    let dailyGoalMet: [Bool]
+    let avgSteps: Int
+    let prevAvgSteps: Int
+    let startDate: Date
+    let endDate: Date
+    let dailyGoal: Int
+    let weekStartsMonday: Bool
+    
+    private let dayLabels = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    private let dayLabelsSun = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+    
+    private var labels: [String] {
+        weekStartsMonday ? dayLabels : dayLabelsSun
+    }
+    
+    private var todayIndex: Int {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: Date()) // 1=Sun..7=Sat
+        if weekStartsMonday {
+            // Mon=0, Tue=1, ... Sun=6
+            return (weekday + 5) % 7
+        } else {
+            return weekday - 1
+        }
+    }
+    
+    private var isCurrentWeek: Bool {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let start = calendar.startOfDay(for: startDate)
+        let end = calendar.startOfDay(for: endDate)
+        return today >= start && today <= end
+    }
+    
+    private var avgIsUp: Bool {
+        avgSteps >= prevAvgSteps
+    }
+    
+    private var maxDailySteps: Int {
+        max(dailySteps.max() ?? 1, dailyGoal, 1)
+    }
+    
+    private func dateRangeString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        formatter.locale = Locale(identifier: "en_US")
+        let start = formatter.string(from: startDate).uppercased()
+        let end = formatter.string(from: endDate).uppercased()
+        return "\(start) – \(end)"
+    }
+    
+    private func formatSteps(_ steps: Int) -> String {
+        if steps >= 1000 {
+            let k = Double(steps) / 1000.0
+            if k >= 10 {
+                return "\(Int(k))K"
+            } else {
+                return String(format: "%.0fK", k)
+            }
+        }
+        return "<1K"
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header: 50px
+            HStack(alignment: .top) {
+                // Left: title + total
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Week summary")
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    
+                    Text("\(totalSteps.formatted())")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                // Right: date range + avg
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(dateRangeString())
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    
+                    // AVG badge
+                    HStack(spacing: 6) {
+                        Text("AVG \(avgSteps.formatted())")
+                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            .foregroundColor(.white)
+                        
+                        Image(systemName: avgIsUp ? "arrow.up.forward.circle" : "arrow.down.forward.circle")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(avgIsUp ? Color(hex: "34C759") : Color.red)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "1A1A1A"))
+                    .cornerRadius(20)
+                }
+            }
+            .frame(height: 50)
+            
+            Spacer().frame(height: 10)
+            
+            // Bar chart
+            GeometryReader { geo in
+                let totalWidth = geo.size.width
+                let barWidth: CGFloat = 25
+                let spacing = (totalWidth - barWidth * 7) / 6
+                let chartTop: CGFloat = 20  // space for value labels
+                let chartBottom: CGFloat = 30 // space for day labels
+                let barAreaHeight = geo.size.height - chartTop - chartBottom
+                
+                // Goal line Y
+                let goalRatio = CGFloat(dailyGoal) / CGFloat(maxDailySteps)
+                let goalY = chartTop + barAreaHeight * (1 - goalRatio)
+                
+                ZStack(alignment: .topLeading) {
+                    // Goal dashed line
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: goalY))
+                        path.addLine(to: CGPoint(x: totalWidth, y: goalY))
+                    }
+                    .stroke(
+                        Color(hex: "34C759").opacity(0.4),
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                    )
+                    
+                    // Goal label
+                    Text(formatSteps(dailyGoal))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "34C759").opacity(0.6))
+                        .position(x: 18, y: goalY - 10)
+                    
+                    // Bars + labels
+                    ForEach(0..<7, id: \.self) { i in
+                        let x = CGFloat(i) * (barWidth + spacing)
+                        let steps = dailySteps[i]
+                        let ratio = steps > 0 ? CGFloat(steps) / CGFloat(maxDailySteps) : 0
+                        let barH = max(ratio * barAreaHeight, steps > 0 ? 8 : 4)
+                        let barY = chartTop + barAreaHeight - barH
+                        let goalMet = dailyGoalMet[i]
+                        let isTodayBar = isCurrentWeek && i == todayIndex
+                        let isFuture = isCurrentWeek && i > todayIndex
+                        
+                        // Value label above bar
+                        if steps > 0 {
+                            Text(formatSteps(steps))
+                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .position(x: x + barWidth / 2, y: barY - 10)
+                        }
+                        
+                        // Bar
+                        if steps > 0 || !isFuture {
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(goalMet ? Color(hex: "00CA48") : Color(hex: "373737"))
+                                    .frame(width: barWidth, height: barH)
+                                
+                                // Goal indicator on bar
+                                if goalMet && steps >= dailyGoal * 2 {
+                                    Text("2X")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .padding(.bottom, 8)
+                                } else if goalMet {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .padding(.bottom, 8)
+                                }
+                            }
+                            .position(x: x + barWidth / 2, y: barY + barH / 2)
+                        } else {
+                            // Future day — small dash
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: "373737"))
+                                .frame(width: barWidth, height: 4)
+                                .position(x: x + barWidth / 2, y: chartTop + barAreaHeight - 2)
+                        }
+                        
+                        // Day label
+                        Text(labels[i])
+                            .font(.system(size: 10, weight: isTodayBar ? .bold : .regular, design: .monospaced))
+                            .foregroundColor(isTodayBar ? .white : Color(hex: "8E8E93"))
+                            .position(x: x + barWidth / 2, y: chartTop + barAreaHeight + 18)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .padding(.top, 4)
+        .padding(.bottom, -8)
+        .frame(height: 296)
+        .background(Color(hex: "121212"))
+        .cornerRadius(20)
+    }
+}
+
 // MARK: - Combined Progress Card (Day / Week toggle)
 struct ProgressCardView: View {
     let hourlyStepsToday: [Int]
     let hourlyStepsYesterday: [Int]
-    let weekProgress: [Double]  // 0.0-1.0+ for each day of week
-    let weekStartsMonday: Bool
-    let currentDayIndex: Int    // 0-6, which day of week is today
+    let last7DaysProgress: [Double]
+    let last7DaysLabels: [String]
+    let last7DaysGoalMet: [Bool]
+    let selectedDayOffset: Int  // 0=today, 1=yesterday, etc.
     
-    @State private var selectedPage = 0  // 0 = Day, 1 = Week
+    @State private var selectedPage = 0
+    @State private var dragOffset: CGFloat = 0
     
     private let chartHeight: CGFloat = 72
     
+    // Selected day in chart: index 6 = today, 5 = yesterday, etc.
+    private var selectedChartIndex: Int {
+        return max(0, min(6, 6 - selectedDayOffset))
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header with dots
             HStack(spacing: 10) {
                 Text(selectedPage == 0 ? "Day progress" : "Week Progress")
                     .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundColor(Color(hex: "8E8E93"))
+                    .animation(.none, value: selectedPage)
                 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .medium))
@@ -2101,7 +2353,6 @@ struct ProgressCardView: View {
                 
                 Spacer()
                 
-                // Page indicator dots
                 HStack(spacing: 6) {
                     ForEach(0..<4, id: \.self) { index in
                         Circle()
@@ -2112,20 +2363,52 @@ struct ProgressCardView: View {
                 .padding(.vertical, 4)
             }
             
-            if selectedPage == 0 {
-                dayProgressContent
-            } else {
-                weekProgressContent
+            ZStack {
+                if selectedPage == 0 {
+                    dayProgressContent
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
+                } else {
+                    weekProgressContent
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                }
             }
+            .offset(x: dragOffset)
+            .gesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        let t = value.translation.width
+                        if selectedPage == 0 && t < 0 {
+                            dragOffset = t * 0.3
+                        } else if selectedPage == 1 && t > 0 {
+                            dragOffset = t * 0.3
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            dragOffset = 0
+                        }
+                        let threshold: CGFloat = 40
+                        if value.translation.width < -threshold && selectedPage == 0 {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                selectedPage = 1
+                            }
+                        } else if value.translation.width > threshold && selectedPage == 1 {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                selectedPage = 0
+                            }
+                        }
+                    }
+            )
         }
         .padding(16)
         .background(Color(hex: "121212"))
         .cornerRadius(20)
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                selectedPage = selectedPage == 0 ? 1 : 0
-            }
-        }
     }
     
     // MARK: - Day Progress (hourly bars)
@@ -2164,30 +2447,30 @@ struct ProgressCardView: View {
         }
     }
     
-    // MARK: - Week Progress (line chart)
+    // MARK: - Week Progress (line chart, today = rightmost, full width)
     private var weekProgressContent: some View {
-        let dayLabels: [String] = weekStartsMonday ?
-            ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] :
-            ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
-        
-        let maxProgress = max(weekProgress.max() ?? 1.0, 1.0)
+        let rawMax = last7DaysProgress.max() ?? 1.0
+        let chartMax = max(rawMax, 1.0) * 1.3
         
         return VStack(spacing: 4) {
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
-                let stepX = width / 6
+                let inset: CGFloat = 12
+                let usable = width - inset * 2
+                let stepX = usable / 6
                 
-                // Goal line Y position (progress = 1.0)
-                let goalY = height - (height * (1.0 / maxProgress))
+                let goalY = height - (height * (1.0 / chartMax))
                 
                 ZStack(alignment: .topLeading) {
                     // Vertical grid lines
                     ForEach(0..<7, id: \.self) { i in
-                        Rectangle()
-                            .fill(Color(hex: "1A1A1A"))
-                            .frame(width: 1, height: height)
-                            .offset(x: CGFloat(i) * stepX)
+                        Path { path in
+                            let x = inset + CGFloat(i) * stepX
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: height))
+                        }
+                        .stroke(Color(hex: "1A1A1A"), lineWidth: 1)
                     }
                     
                     // Goal dashed line
@@ -2200,15 +2483,15 @@ struct ProgressCardView: View {
                         style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                     )
                     
-                    // Green line + gradient fill
+                    // Compute points
                     let points: [CGPoint] = (0..<7).map { i in
-                        let x = CGFloat(i) * stepX
-                        let prog = min(weekProgress[i], maxProgress)
-                        let y = height - (height * (prog / maxProgress))
+                        let x = inset + CGFloat(i) * stepX
+                        let prog = min(last7DaysProgress[i], chartMax)
+                        let y = height - (height * (prog / chartMax))
                         return CGPoint(x: x, y: y)
                     }
                     
-                    // Gradient fill under line
+                    // Gradient fill
                     Path { path in
                         guard !points.isEmpty else { return }
                         path.move(to: CGPoint(x: points[0].x, y: height))
@@ -2221,7 +2504,7 @@ struct ProgressCardView: View {
                     }
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "34C759").opacity(0.3), Color(hex: "34C759").opacity(0)],
+                            colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -2237,16 +2520,16 @@ struct ProgressCardView: View {
                     }
                     .stroke(Color(hex: "34C759"), lineWidth: 2)
                     
-                    // Dots on each day
+                    // Dots
                     ForEach(0..<7, id: \.self) { i in
-                        let x = CGFloat(i) * stepX
-                        let prog = min(weekProgress[i], maxProgress)
-                        let y = height - (height * (prog / maxProgress))
-                        let isGoalMet = weekProgress[i] >= 1.0
+                        let x = inset + CGFloat(i) * stepX
+                        let prog = min(last7DaysProgress[i], chartMax)
+                        let y = height - (height * (prog / chartMax))
+                        let isGoalMet = last7DaysGoalMet[i]
+                        let isSelectedDay = i == selectedChartIndex
                         
                         ZStack {
-                            if i == currentDayIndex {
-                                // Today — outer ring
+                            if isSelectedDay {
                                 Circle()
                                     .stroke(Color.white.opacity(0.4), lineWidth: 2)
                                     .frame(width: 10, height: 10)
@@ -2262,15 +2545,21 @@ struct ProgressCardView: View {
             }
             .frame(height: chartHeight)
             
-            // Day labels
-            HStack(spacing: 0) {
+            // Day labels — positioned exactly under dots
+            GeometryReader { geo in
+                let width = geo.size.width
+                let inset: CGFloat = 12
+                let usable = width - inset * 2
+                let stepX = usable / 6
+                
                 ForEach(0..<7, id: \.self) { i in
-                    Text(dayLabels[i])
-                        .font(.system(size: 10, weight: i == currentDayIndex ? .semibold : .regular, design: .monospaced))
-                        .foregroundColor(i == currentDayIndex ? .white : Color(hex: "8E8E93"))
-                        .frame(maxWidth: .infinity)
+                    Text(last7DaysLabels.count > i ? last7DaysLabels[i] : "")
+                        .font(.system(size: 10, weight: i == selectedChartIndex ? .semibold : .regular, design: .monospaced))
+                        .foregroundColor(i == selectedChartIndex ? .white : Color(hex: "8E8E93"))
+                        .position(x: inset + CGFloat(i) * stepX, y: 8)
                 }
             }
+            .frame(height: 16)
         }
     }
     

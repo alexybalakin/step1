@@ -186,31 +186,85 @@ struct MainAppView: View {
         }
     }
     
+    /// How many days back from today (0 = today, 1 = yesterday, ... 6 = max)
+    var dayOffset: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let selected = calendar.startOfDay(for: currentDate)
+        return calendar.dateComponents([.day], from: selected, to: today).day ?? 0
+    }
+    
     var canGoForward: Bool {
         let calendar = Calendar.current
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
         return calendar.startOfDay(for: tomorrow) <= calendar.startOfDay(for: Date())
     }
     
-    var currentDayOfWeekIndex: Int {
-        let calendar = healthManager.appCalendar
-        let weekday = calendar.component(.weekday, from: Date())
-        let firstDay = calendar.firstWeekday
-        var index = weekday - firstDay
-        if index < 0 { index += 7 }
-        return index
+    var canGoBack: Bool {
+        return dayOffset < 6 // max 7 days total (0..6)
     }
     
     func changeDate(by value: Int) {
         let calendar = Calendar.current
         let newDate = calendar.date(byAdding: .day, value: value, to: currentDate) ?? currentDate
-        if newDate <= Date() {
+        let today = calendar.startOfDay(for: Date())
+        let sixDaysAgo = calendar.date(byAdding: .day, value: -6, to: today)!
+        let target = calendar.startOfDay(for: newDate)
+        
+        if target >= sixDaysAgo && target <= today {
             withAnimation {
                 currentDate = newDate
                 healthManager.currentDate = newDate
                 healthManager.loadDataForCurrentDate()
             }
         }
+    }
+    
+    @ViewBuilder
+    func metricTiles(steps: Int, distanceOverride: Double? = nil, durationOverride: Int? = nil, caloriesOverride: Double? = nil) -> some View {
+        let km = distanceOverride ?? (Double(steps) * 0.00075)
+        let totalSec = durationOverride ?? Int((km / 5.0) * 3600.0)
+        let cal = caloriesOverride ?? (Double(steps) * 0.045)
+        
+        HStack(spacing: 8) {
+            StepMetricTile(
+                title: "Distance",
+                value: {
+                    if healthManager.useMetric {
+                        if km < 0.1 { return "\(Int(km * 1000)) m" }
+                        return String(format: "%.1f km", km)
+                    } else {
+                        let miles = km * 0.621371
+                        if miles < 0.1 { return "\(Int(miles * 5280)) ft" }
+                        return String(format: "%.1f mi", miles)
+                    }
+                }()
+            )
+            
+            StepMetricTile(
+                title: "Time",
+                value: {
+                    let totalMinutes = totalSec / 60
+                    let hours = totalMinutes / 60
+                    let mins = totalMinutes % 60
+                    let secs = totalSec % 60
+                    if hours > 0 { return "\(hours)h \(mins)m" }
+                    if totalMinutes > 0 { return "\(mins)m" }
+                    return "\(secs)s"
+                }()
+            )
+            
+            StepMetricTile(
+                title: "Calories",
+                value: {
+                    if cal < 1 && cal > 0 {
+                        return String(format: "%.1f kcal", cal)
+                    }
+                    return "\(Int(cal)) kcal"
+                }()
+            )
+        }
+        .padding(.horizontal, 16)
     }
     
     var body: some View {
@@ -230,109 +284,136 @@ struct MainAppView: View {
                     
                     ScrollView {
                         VStack(spacing: 0) {
-                            CircularProgressView(
-                                steps: healthManager.steps,
-                                goal: healthManager.dailyGoal,
-                                progress: healthManager.progress,
-                                percentage: healthManager.percentageOverGoal,
-                                goalReached: healthManager.goalReached,
-                                dateLabel: dateLabel,
-                                isToday: Calendar.current.isDateInToday(currentDate),
-                                onSwipeLeft: { changeDate(by: -1) },
-                                onSwipeRight: { changeDate(by: 1) },
-                                canGoRight: canGoForward
-                            )
-                            .onTapGesture {
-                                showGoalEditor = true
-                            }
-                            
-                            // Distance / Time / Calories tiles
-                            HStack(spacing: 8) {
-                                StepMetricTile(
-                                    title: "Distance",
-                                    value: {
-                                        let km = Double(healthManager.steps) * 0.00075
-                                        if healthManager.useMetric {
-                                            if km < 0.1 {
-                                                return "\(Int(km * 1000)) m"
-                                            } else {
-                                                return String(format: "%.1f km", km)
+                            if selectedPeriod == 0 {
+                                // ===== DAY VIEW =====
+                                CircularProgressView(
+                                    steps: healthManager.steps,
+                                    goal: healthManager.dailyGoal,
+                                    progress: healthManager.progress,
+                                    percentage: healthManager.percentageOverGoal,
+                                    goalReached: healthManager.goalReached,
+                                    dateLabel: dateLabel,
+                                    isToday: Calendar.current.isDateInToday(currentDate),
+                                    onGoBack: { changeDate(by: -1) },
+                                    onGoForward: { changeDate(by: 1) },
+                                    canGoBack: canGoBack,
+                                    canGoForward: canGoForward
+                                )
+                                .onTapGesture {
+                                    showGoalEditor = true
+                                }
+                                
+                                // Distance / Time / Calories — daily
+                                metricTiles(
+                                    steps: healthManager.steps
+                                )
+                                
+                                // Progress Card (Day / Week toggle)
+                                ProgressCardView(
+                                    hourlyStepsToday: healthManager.hourlyStepsToday,
+                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
+                                    last7DaysProgress: healthManager.last7DaysProgress,
+                                    last7DaysLabels: healthManager.last7DaysLabels,
+                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
+                                    selectedDayOffset: dayOffset
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                
+                                // Streak + Best Day tiles
+                                HStack(spacing: 8) {
+                                    StreakTile(
+                                        currentStreak: healthManager.streakCount,
+                                        maxStreak: healthManager.maxStreak
+                                    )
+                                    
+                                    BestDayTile(
+                                        bestSteps: healthManager.bestDaySteps,
+                                        bestDate: healthManager.bestDayDate
+                                    )
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                .padding(.bottom, 100)
+                                
+                            } else if selectedPeriod == 1 {
+                                // ===== WEEK VIEW =====
+                                WeekSummaryView(
+                                    totalSteps: healthManager.weekSummaryTotal,
+                                    dailySteps: healthManager.weekSummaryDailySteps,
+                                    dailyGoalMet: healthManager.weekSummaryDailyGoalMet,
+                                    avgSteps: healthManager.weekSummaryAvg,
+                                    prevAvgSteps: healthManager.weekSummaryPrevAvg,
+                                    startDate: healthManager.weekSummaryStartDate,
+                                    endDate: healthManager.weekSummaryEndDate,
+                                    dailyGoal: healthManager.dailyGoal,
+                                    weekStartsMonday: healthManager.weekStartsMonday
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 20)
+                                .gesture(
+                                    DragGesture(minimumDistance: 30)
+                                        .onEnded { value in
+                                            if value.translation.width > 50 {
+                                                // Swipe right = prev week
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    healthManager.fetchWeekSummary(offset: healthManager.weekOffset - 1)
+                                                }
+                                            } else if value.translation.width < -50 && healthManager.weekOffset < 0 {
+                                                // Swipe left = next week (can't go past current)
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    healthManager.fetchWeekSummary(offset: healthManager.weekOffset + 1)
+                                                }
                                             }
-                                        } else {
-                                            let miles = km * 0.621371
-                                            if miles < 0.1 {
-                                                let feet = Int(miles * 5280)
-                                                return "\(feet) ft"
-                                            } else {
-                                                return String(format: "%.1f mi", miles)
-                                            }
                                         }
-                                    }()
                                 )
                                 
-                                StepMetricTile(
-                                    title: "Time",
-                                    value: {
-                                        let km = Double(healthManager.steps) * 0.00075
-                                        let totalSeconds = (km / 5.0) * 3600.0
-                                        let totalMinutes = Int(totalSeconds) / 60
-                                        let secs = Int(totalSeconds) % 60
-                                        let hours = totalMinutes / 60
-                                        let mins = totalMinutes % 60
-                                        if hours > 0 {
-                                            return "\(hours)h \(mins)m"
-                                        } else if totalMinutes > 0 {
-                                            return "\(mins)m"
-                                        } else {
-                                            return "\(secs)s"
-                                        }
-                                    }()
+                                // Distance / Time / Calories — weekly
+                                metricTiles(
+                                    steps: healthManager.weekSummaryTotal,
+                                    distanceOverride: healthManager.weekSummaryTotalDistance,
+                                    durationOverride: healthManager.weekSummaryTotalDuration,
+                                    caloriesOverride: healthManager.weekSummaryTotalCalories
                                 )
+                                .padding(.top, 8)
                                 
-                                StepMetricTile(
-                                    title: "Calories",
-                                    value: {
-                                        let cal = Double(healthManager.steps) * 0.045
-                                        if cal < 1 && cal > 0 {
-                                            return String(format: "%.1f kcal", cal)
-                                        } else {
-                                            return "\(Int(cal)) kcal"
-                                        }
-                                    }()
+                                // Progress Card
+                                ProgressCardView(
+                                    hourlyStepsToday: healthManager.hourlyStepsToday,
+                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
+                                    last7DaysProgress: healthManager.last7DaysProgress,
+                                    last7DaysLabels: healthManager.last7DaysLabels,
+                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
+                                    selectedDayOffset: dayOffset
                                 )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                
+                                // Streak + Best Day tiles
+                                HStack(spacing: 8) {
+                                    StreakTile(
+                                        currentStreak: healthManager.streakCount,
+                                        maxStreak: healthManager.maxStreak
+                                    )
+                                    
+                                    BestDayTile(
+                                        bestSteps: healthManager.bestDaySteps,
+                                        bestDate: healthManager.bestDayDate
+                                    )
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                .padding(.bottom, 100)
                             }
-                            .padding(.horizontal, 16)
-                            
-                            // Progress Card (Day / Week toggle)
-                            ProgressCardView(
-                                hourlyStepsToday: healthManager.hourlyStepsToday,
-                                hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
-                                weekProgress: healthManager.weekProgress,
-                                weekStartsMonday: healthManager.weekStartsMonday,
-                                currentDayIndex: currentDayOfWeekIndex
-                            )
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                            
-                            // Streak + Best Day tiles
-                            HStack(spacing: 8) {
-                                StreakTile(
-                                    currentStreak: healthManager.streakCount,
-                                    maxStreak: healthManager.maxStreak
-                                )
-                                
-                                BestDayTile(
-                                    bestSteps: healthManager.bestDaySteps,
-                                    bestDate: healthManager.bestDayDate
-                                )
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                            .padding(.bottom, 100)
                         }
                     }
                     .refreshable {
                         await refreshData()
+                    }
+                    .onChange(of: selectedPeriod) { newPeriod in
+                        if newPeriod == 1 {
+                            healthManager.fetchWeekSummary(offset: 0)
+                        }
                     }
                     
                     Spacer()

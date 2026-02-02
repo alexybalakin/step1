@@ -328,7 +328,7 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 }
                 
                 let steps = Int(sum.doubleValue(for: HKUnit.count()))
-                let progress = min(Double(steps) / Double(self.dailyGoal), 1.0)
+                let progress = Double(steps) / Double(self.dailyGoal)
                 
                 tempResults[dayOffset] = (steps >= self.dailyGoal, progress)
             }
@@ -339,10 +339,166 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         group.notify(queue: .main) {
             self.weekStreak = tempResults.map { $0.streak }
             self.weekProgress = tempResults.map { $0.progress }
+            self.fetchLast7DaysProgress()
+        }
+    }
+    
+    // MARK: - Last 7 days progress (today = rightmost)
+    @Published var last7DaysProgress: [Double] = Array(repeating: 0.0, count: 7)
+    @Published var last7DaysLabels: [String] = Array(repeating: "", count: 7)
+    @Published var last7DaysGoalMet: [Bool] = Array(repeating: false, count: 7)
+    
+    func fetchLast7DaysProgress() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let dayAbbrs = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        
+        var tempProgress: [Double] = Array(repeating: 0.0, count: 7)
+        var tempLabels: [String] = Array(repeating: "", count: 7)
+        var tempGoalMet: [Bool] = Array(repeating: false, count: 7)
+        let group = DispatchGroup()
+        
+        for i in 0..<7 {
+            // i=0 is 6 days ago, i=6 is today
+            let dayStart = calendar.date(byAdding: .day, value: -(6 - i), to: today)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            let weekday = calendar.component(.weekday, from: dayStart) // 1=Sun...7=Sat
+            tempLabels[i] = dayAbbrs[weekday - 1]
+            
+            group.enter()
+            
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    tempProgress[i] = Double(steps) / Double(self.dailyGoal)
+                    tempGoalMet[i] = steps >= self.dailyGoal
+                }
+            }
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            self.last7DaysProgress = tempProgress
+            self.last7DaysLabels = tempLabels
+            self.last7DaysGoalMet = tempGoalMet
         }
     }
     
     // MARK: - Global Streak (counts consecutive days from yesterday backwards)
+    
+    // MARK: - Week Summary (for W tab)
+    @Published var weekSummaryTotal: Int = 0
+    @Published var weekSummaryDailySteps: [Int] = Array(repeating: 0, count: 7)  // Mon-Sun
+    @Published var weekSummaryDailyGoalMet: [Bool] = Array(repeating: false, count: 7)
+    @Published var weekSummaryAvg: Int = 0
+    @Published var weekSummaryPrevAvg: Int = 0
+    @Published var weekSummaryStartDate: Date = Date()
+    @Published var weekSummaryEndDate: Date = Date()
+    @Published var weekSummaryTotalDistance: Double = 0.0  // km
+    @Published var weekSummaryTotalDuration: Int = 0       // seconds
+    @Published var weekSummaryTotalCalories: Double = 0.0
+    var weekOffset: Int = 0  // 0 = current week, -1 = last week, etc.
+    
+    func fetchWeekSummary(offset: Int = 0) {
+        self.weekOffset = offset
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = appCalendar
+        
+        // Find Monday (or Sunday if weekStartsMonday=false) of current week
+        let today = calendar.startOfDay(for: Date())
+        let currentWeekday = calendar.component(.weekday, from: today)
+        let firstDay = calendar.firstWeekday
+        var daysFromStart = currentWeekday - firstDay
+        if daysFromStart < 0 { daysFromStart += 7 }
+        let thisWeekStart = calendar.date(byAdding: .day, value: -daysFromStart, to: today)!
+        
+        // Apply offset
+        let weekStart = calendar.date(byAdding: .day, value: offset * 7, to: thisWeekStart)!
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart)!
+        
+        DispatchQueue.main.async {
+            self.weekSummaryStartDate = weekStart
+            self.weekSummaryEndDate = calendar.date(byAdding: .day, value: 6, to: weekStart)!
+        }
+        
+        let todayStart = calendar.startOfDay(for: Date())
+        
+        var tempSteps: [Int] = Array(repeating: 0, count: 7)
+        var tempGoalMet: [Bool] = Array(repeating: false, count: 7)
+        let group = DispatchGroup()
+        
+        for dayIdx in 0..<7 {
+            let dayStart = calendar.date(byAdding: .day, value: dayIdx, to: weekStart)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            
+            if calendar.startOfDay(for: dayStart) > todayStart { continue }
+            
+            group.enter()
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    tempSteps[dayIdx] = steps
+                    tempGoalMet[dayIdx] = steps >= self.dailyGoal
+                }
+            }
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            self.weekSummaryDailySteps = tempSteps
+            self.weekSummaryDailyGoalMet = tempGoalMet
+            let total = tempSteps.reduce(0, +)
+            self.weekSummaryTotal = total
+            let activeDays = tempSteps.filter { $0 > 0 }.count
+            self.weekSummaryAvg = activeDays > 0 ? total / activeDays : 0
+            
+            // Distance, time, calories for week
+            let totalSteps = Double(total)
+            self.weekSummaryTotalDistance = totalSteps * 0.00075
+            self.weekSummaryTotalDuration = Int((totalSteps * 0.00075 / 5.0) * 3600.0)
+            self.weekSummaryTotalCalories = totalSteps * 0.045
+            
+            // Fetch previous week avg for comparison
+            self.fetchPrevWeekAvg(prevWeekStart: calendar.date(byAdding: .day, value: -7, to: weekStart)!)
+        }
+    }
+    
+    private func fetchPrevWeekAvg(prevWeekStart: Date) {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = appCalendar
+        let todayStart = calendar.startOfDay(for: Date())
+        
+        var tempSteps: [Int] = Array(repeating: 0, count: 7)
+        let group = DispatchGroup()
+        
+        for dayIdx in 0..<7 {
+            let dayStart = calendar.date(byAdding: .day, value: dayIdx, to: prevWeekStart)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            if calendar.startOfDay(for: dayStart) > todayStart { continue }
+            
+            group.enter()
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    tempSteps[dayIdx] = Int(sum.doubleValue(for: HKUnit.count()))
+                }
+            }
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            let total = tempSteps.reduce(0, +)
+            let activeDays = tempSteps.filter { $0 > 0 }.count
+            self.weekSummaryPrevAvg = activeDays > 0 ? total / activeDays : 0
+        }
+    }
     func calculateGlobalStreak() {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
         let calendar = Calendar.current

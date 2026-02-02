@@ -499,6 +499,110 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             self.weekSummaryPrevAvg = activeDays > 0 ? total / activeDays : 0
         }
     }
+    
+    // MARK: - Month Summary (for M tab)
+    @Published var monthSummaryTotal: Int = 0
+    @Published var monthSummaryDailySteps: [Int] = []        // 28-31 values
+    @Published var monthSummaryDailyGoalMet: [Bool] = []
+    @Published var monthSummaryAvg: Int = 0
+    @Published var monthSummaryPrevAvg: Int = 0
+    @Published var monthSummaryMonth: Date = Date()          // 1st of displayed month
+    @Published var monthSummaryTotalDistance: Double = 0.0
+    @Published var monthSummaryTotalDuration: Int = 0
+    @Published var monthSummaryTotalCalories: Double = 0.0
+    var monthOffset: Int = 0
+    
+    func fetchMonthSummary(offset: Int = 0) {
+        self.monthOffset = offset
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        // Find 1st of current month
+        let components = calendar.dateComponents([.year, .month], from: today)
+        let thisMonth1st = calendar.date(from: components)!
+        
+        // Apply offset
+        let targetMonth1st = calendar.date(byAdding: .month, value: offset, to: thisMonth1st)!
+        let daysInMonth = calendar.range(of: .day, in: .month, for: targetMonth1st)!.count
+        
+        DispatchQueue.main.async {
+            self.monthSummaryMonth = targetMonth1st
+        }
+        
+        var tempSteps: [Int] = Array(repeating: 0, count: daysInMonth)
+        var tempGoalMet: [Bool] = Array(repeating: false, count: daysInMonth)
+        let group = DispatchGroup()
+        
+        for dayIdx in 0..<daysInMonth {
+            let dayStart = calendar.date(byAdding: .day, value: dayIdx, to: targetMonth1st)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            
+            if calendar.startOfDay(for: dayStart) > today { continue }
+            
+            group.enter()
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                    tempSteps[dayIdx] = steps
+                    tempGoalMet[dayIdx] = steps >= self.dailyGoal
+                }
+            }
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            self.monthSummaryDailySteps = tempSteps
+            self.monthSummaryDailyGoalMet = tempGoalMet
+            let total = tempSteps.reduce(0, +)
+            self.monthSummaryTotal = total
+            let activeDays = tempSteps.filter { $0 > 0 }.count
+            self.monthSummaryAvg = activeDays > 0 ? total / activeDays : 0
+            
+            let totalStepsD = Double(total)
+            self.monthSummaryTotalDistance = totalStepsD * 0.00075
+            self.monthSummaryTotalDuration = Int((totalStepsD * 0.00075 / 5.0) * 3600.0)
+            self.monthSummaryTotalCalories = totalStepsD * 0.045
+            
+            // Previous month avg
+            self.fetchPrevMonthAvg(prevMonth1st: calendar.date(byAdding: .month, value: -1, to: targetMonth1st)!)
+        }
+    }
+    
+    private func fetchPrevMonthAvg(prevMonth1st: Date) {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let daysInMonth = calendar.range(of: .day, in: .month, for: prevMonth1st)!.count
+        
+        var tempSteps: [Int] = Array(repeating: 0, count: daysInMonth)
+        let group = DispatchGroup()
+        
+        for dayIdx in 0..<daysInMonth {
+            let dayStart = calendar.date(byAdding: .day, value: dayIdx, to: prevMonth1st)!
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+            if calendar.startOfDay(for: dayStart) > todayStart { continue }
+            
+            group.enter()
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                defer { group.leave() }
+                if let sum = result?.sumQuantity() {
+                    tempSteps[dayIdx] = Int(sum.doubleValue(for: HKUnit.count()))
+                }
+            }
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            let total = tempSteps.reduce(0, +)
+            let activeDays = tempSteps.filter { $0 > 0 }.count
+            self.monthSummaryPrevAvg = activeDays > 0 ? total / activeDays : 0
+        }
+    }
+    
     func calculateGlobalStreak() {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
         let calendar = Calendar.current

@@ -2217,7 +2217,7 @@ struct WeekSummaryView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
                     .background(Color(hex: "1A1A1A"))
-                    .cornerRadius(20)
+                    .cornerRadius(8)
                 }
             }
             .frame(height: 50)
@@ -2247,12 +2247,6 @@ struct WeekSummaryView: View {
                         Color(hex: "34C759").opacity(0.4),
                         style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                     )
-                    
-                    // Goal label
-                    Text(formatSteps(dailyGoal))
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundColor(Color(hex: "34C759").opacity(0.6))
-                        .position(x: 18, y: goalY - 10)
                     
                     // Bars + labels
                     ForEach(0..<7, id: \.self) { i in
@@ -2317,6 +2311,215 @@ struct WeekSummaryView: View {
         .frame(height: 296)
         .background(Color(hex: "121212"))
         .cornerRadius(20)
+    }
+}
+
+// MARK: - Month Summary Card (M tab)
+struct MonthSummaryView: View {
+    let totalSteps: Int
+    let dailySteps: [Int]
+    let dailyGoalMet: [Bool]
+    let avgSteps: Int
+    let prevAvgSteps: Int
+    let monthDate: Date       // 1st of the month
+    let dailyGoal: Int
+    let weekStartsMonday: Bool
+    let canGoForward: Bool
+    let onPrev: () -> Void
+    let onNext: () -> Void
+    
+    private let dayLabels = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    private let dayLabelsSun = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+    
+    private var labels: [String] {
+        weekStartsMonday ? dayLabels : dayLabelsSun
+    }
+    
+    private var avgIsUp: Bool {
+        avgSteps >= prevAvgSteps
+    }
+    
+    private var monthName: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.string(from: monthDate)
+    }
+    
+    private var daysInMonth: Int {
+        let calendar = Calendar.current
+        return calendar.range(of: .day, in: .month, for: monthDate)?.count ?? 30
+    }
+    
+    /// Weekday of 1st (0-based, Monday=0 if weekStartsMonday)
+    private var firstDayOffset: Int {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: monthDate) // 1=Sun..7=Sat
+        if weekStartsMonday {
+            return (weekday + 5) % 7 // Mon=0, Tue=1, ... Sun=6
+        } else {
+            return weekday - 1 // Sun=0, Mon=1, ... Sat=6
+        }
+    }
+    
+    private var todayDay: Int? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let month1st = calendar.startOfDay(for: monthDate)
+        let comp = calendar.dateComponents([.year, .month], from: today)
+        let comp2 = calendar.dateComponents([.year, .month], from: month1st)
+        if comp.year == comp2.year && comp.month == comp2.month {
+            return calendar.component(.day, from: today)
+        }
+        return nil
+    }
+    
+    /// Total rows needed (always 5 for consistent height)
+    private var totalRows: Int { 5 }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Month summary")
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                    
+                    Text("\(totalSteps.formatted())")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    // Month name with arrows
+                    HStack(spacing: 12) {
+                        Button(action: onPrev) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                        }
+                        
+                        Text(monthName)
+                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                        
+                        Button(action: onNext) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(canGoForward ? Color(hex: "8E8E93") : Color(hex: "3A3A3C"))
+                        }
+                        .disabled(!canGoForward)
+                    }
+                    
+                    // AVG badge
+                    HStack(spacing: 6) {
+                        Text("AVG \(avgSteps.formatted())")
+                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            .foregroundColor(.white)
+                        
+                        Image(systemName: avgIsUp ? "arrow.up.forward.circle" : "arrow.down.forward.circle")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(avgIsUp ? Color(hex: "34C759") : Color.red)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "1A1A1A"))
+                    .cornerRadius(8)
+                }
+            }
+            .frame(height: 50)
+            
+            Spacer().frame(height: 10)
+            
+            // Calendar grid
+            VStack(spacing: 4) {
+                ForEach(0..<totalRows, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<7, id: \.self) { col in
+                            let cellIndex = row * 7 + col
+                            let dayNum = cellIndex - firstDayOffset + 1
+                            
+                            ZStack {
+                                if dayNum >= 1 && dayNum <= daysInMonth {
+                                    let isToday = dayNum == todayDay
+                                    let isPast = isDayPast(dayNum)
+                                    let goalMet = dayNum <= dailyGoalMet.count ? dailyGoalMet[dayNum - 1] : false
+                                    
+                                    if isToday {
+                                        // Today: green stroke ring
+                                        Circle()
+                                            .stroke(Color(hex: "34C759"), lineWidth: 1)
+                                            .frame(width: 30, height: 30)
+                                        
+                                        if goalMet {
+                                            Circle()
+                                                .fill(Color(hex: "00CA48"))
+                                                .frame(width: 24, height: 24)
+                                        }
+                                        
+                                        Text("\(dayNum)")
+                                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                            .foregroundColor(goalMet ? .black : .white)
+                                    } else if isPast && goalMet {
+                                        // Past + goal met: green circle
+                                        Circle()
+                                            .fill(Color(hex: "00CA48"))
+                                            .frame(width: 24, height: 24)
+                                        
+                                        Text("\(dayNum)")
+                                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                            .foregroundColor(.black)
+                                    } else if isPast {
+                                        // Past + goal not met: just number
+                                        Text("\(dayNum)")
+                                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                                            .foregroundColor(Color(hex: "9B9B9B"))
+                                    } else {
+                                        // Future day: grey number
+                                        Text("\(dayNum)")
+                                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                                            .foregroundColor(Color(hex: "3A3A3C"))
+                                    }
+                                } else {
+                                    // Empty cell: small dot
+                                    Circle()
+                                        .fill(Color(hex: "373737"))
+                                        .frame(width: 6, height: 6)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 36)
+                        }
+                    }
+                }
+                
+                // Day of week labels
+                HStack(spacing: 0) {
+                    ForEach(0..<7, id: \.self) { i in
+                        Text(labels[i])
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(16)
+        .padding(.top, 4)
+        .padding(.bottom, -8)
+        .background(Color(hex: "121212"))
+        .cornerRadius(20)
+    }
+    
+    private func isDayPast(_ day: Int) -> Bool {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let dayDate = calendar.date(byAdding: .day, value: day - 1, to: monthDate) else { return false }
+        return calendar.startOfDay(for: dayDate) <= today
     }
 }
 

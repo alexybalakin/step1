@@ -405,6 +405,72 @@ struct MainAppView: View {
                                 .padding(.top, 8)
                                 .padding(.bottom, 100)
                             }
+                            
+                            else if selectedPeriod == 2 {
+                                // ===== MONTH VIEW =====
+                                MonthSummaryView(
+                                    totalSteps: healthManager.monthSummaryTotal,
+                                    dailySteps: healthManager.monthSummaryDailySteps,
+                                    dailyGoalMet: healthManager.monthSummaryDailyGoalMet,
+                                    avgSteps: healthManager.monthSummaryAvg,
+                                    prevAvgSteps: healthManager.monthSummaryPrevAvg,
+                                    monthDate: healthManager.monthSummaryMonth,
+                                    dailyGoal: healthManager.dailyGoal,
+                                    weekStartsMonday: healthManager.weekStartsMonday,
+                                    canGoForward: healthManager.monthOffset < 0,
+                                    onPrev: {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            healthManager.fetchMonthSummary(offset: healthManager.monthOffset - 1)
+                                        }
+                                    },
+                                    onNext: {
+                                        if healthManager.monthOffset < 0 {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                healthManager.fetchMonthSummary(offset: healthManager.monthOffset + 1)
+                                            }
+                                        }
+                                    }
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 20)
+                                
+                                // Distance / Time / Calories — monthly
+                                metricTiles(
+                                    steps: healthManager.monthSummaryTotal,
+                                    distanceOverride: healthManager.monthSummaryTotalDistance,
+                                    durationOverride: healthManager.monthSummaryTotalDuration,
+                                    caloriesOverride: healthManager.monthSummaryTotalCalories
+                                )
+                                .padding(.top, 8)
+                                
+                                // Progress Card
+                                ProgressCardView(
+                                    hourlyStepsToday: healthManager.hourlyStepsToday,
+                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
+                                    last7DaysProgress: healthManager.last7DaysProgress,
+                                    last7DaysLabels: healthManager.last7DaysLabels,
+                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
+                                    selectedDayOffset: dayOffset
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                
+                                // Streak + Best Day tiles
+                                HStack(spacing: 8) {
+                                    StreakTile(
+                                        currentStreak: healthManager.streakCount,
+                                        maxStreak: healthManager.maxStreak
+                                    )
+                                    
+                                    BestDayTile(
+                                        bestSteps: healthManager.bestDaySteps,
+                                        bestDate: healthManager.bestDayDate
+                                    )
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                .padding(.bottom, 100)
+                            }
                         }
                     }
                     .refreshable {
@@ -413,6 +479,8 @@ struct MainAppView: View {
                     .onChange(of: selectedPeriod) { newPeriod in
                         if newPeriod == 1 {
                             healthManager.fetchWeekSummary(offset: 0)
+                        } else if newPeriod == 2 {
+                            healthManager.fetchMonthSummary(offset: 0)
                         }
                     }
                     

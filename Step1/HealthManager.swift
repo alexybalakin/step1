@@ -18,9 +18,14 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var distance: Double = 0.0
     @Published var duration: Int = 0
     @Published var goalReached: Bool = false
+    @Published var shouldShowCelebration: Bool = false  // FIX #4: Trigger celebration popup
     @Published var dailyGoal: Int = 10000 {
         didSet {
             saveDailyGoal()
+            // FIX #3: Check if goal change causes celebration (lowered goal and now reached)
+            if Calendar.current.isDateInToday(currentDate) && steps >= dailyGoal && oldValue > dailyGoal {
+                triggerCelebration()
+            }
             loadDataForCurrentDate()
         }
     }
@@ -52,7 +57,16 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var distanceChange: Double = 0.0
     @Published var durationChange: Double = 0.0
     
+    // Year progress data (12 months)
+    @Published var yearProgress: [Double] = Array(repeating: 0.0, count: 12)
+    @Published var yearGoalMet: [Bool] = Array(repeating: false, count: 12)
+    
+    // Quarter progress data (12 weeks)
+    @Published var quarterProgress: [Double] = Array(repeating: 0.0, count: 12)
+    @Published var quarterGoalMet: [Bool] = Array(repeating: false, count: 12)
+    
     var currentDate: Date = Date()
+    private var hasShownCelebrationToday: Bool = false
     
     override init() {
         super.init()
@@ -65,6 +79,32 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         if UserDefaults.standard.object(forKey: "week_starts_monday") != nil {
             weekStartsMonday = UserDefaults.standard.bool(forKey: "week_starts_monday")
+        }
+        // Check if we've already shown celebration today
+        let lastCelebrationDate = UserDefaults.standard.object(forKey: "lastCelebrationDate") as? Date
+        if let lastDate = lastCelebrationDate, Calendar.current.isDateInToday(lastDate) {
+            hasShownCelebrationToday = true
+        }
+    }
+    
+    // FIX #3: Helper to trigger celebration
+    func triggerCelebration() {
+        guard !hasShownCelebrationToday else { return }
+        hasShownCelebrationToday = true
+        UserDefaults.standard.set(Date(), forKey: "lastCelebrationDate")
+        shouldShowCelebration = true
+    }
+    
+    // FIX #4: Check on app launch if goal was reached while app was closed
+    func checkCelebrationOnLaunch() {
+        guard Calendar.current.isDateInToday(currentDate) else { return }
+        guard !hasShownCelebrationToday else { return }
+        
+        if steps >= dailyGoal {
+            // Goal was reached while app was closed — show with delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                self.triggerCelebration()
+            }
         }
     }
     
@@ -159,13 +199,117 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         fetchBestDay()
         fetchHourlySteps(for: currentDate, isToday: true)
         fetchHourlySteps(for: yesterdayDate, isToday: false)
+        fetchYearProgress()
+        fetchQuarterProgress()
+    }
+    
+    // MARK: - Fetch Year Progress (12 months)
+    func fetchYearProgress() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let now = Date()
+        
+        var tempProgress: [Double] = Array(repeating: 0.0, count: 12)
+        var tempGoalMet: [Bool] = Array(repeating: false, count: 12)
+        let group = DispatchGroup()
+        
+        for monthOffset in 0..<12 {
+            group.enter()
+            
+            // Calculate start and end of month
+            var components = calendar.dateComponents([.year, .month], from: now)
+            components.month! -= (11 - monthOffset)  // 0 = 11 months ago, 11 = current month
+            
+            guard let startOfMonth = calendar.date(from: components),
+                  let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth) else {
+                group.leave()
+                continue
+            }
+            
+            let endDate = min(endOfMonth, now)
+            let predicate = HKQuery.predicateForSamples(withStart: startOfMonth, end: calendar.date(byAdding: .day, value: 1, to: endDate), options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                
+                guard let result = result, let sum = result.sumQuantity() else { return }
+                
+                let totalSteps = Int(sum.doubleValue(for: HKUnit.count()))
+                let daysInMonth = calendar.dateComponents([.day], from: startOfMonth, to: calendar.date(byAdding: .day, value: 1, to: endDate)!).day ?? 1
+                let avgSteps = daysInMonth > 0 ? totalSteps / daysInMonth : 0
+                let progress = Double(avgSteps) / Double(self.dailyGoal)
+                
+                tempProgress[monthOffset] = progress
+                tempGoalMet[monthOffset] = progress >= 1.0
+            }
+            
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            self.yearProgress = tempProgress
+            self.yearGoalMet = tempGoalMet
+        }
+    }
+    
+    // MARK: - Fetch Quarter Progress (12 weeks)
+    func fetchQuarterProgress() {
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        let calendar = Calendar.current
+        let now = Date()
+        
+        var tempProgress: [Double] = Array(repeating: 0.0, count: 12)
+        var tempGoalMet: [Bool] = Array(repeating: false, count: 12)
+        let group = DispatchGroup()
+        
+        for weekOffset in 0..<12 {
+            group.enter()
+            
+            // Calculate start and end of week (weekOffset 0 = 11 weeks ago, 11 = current week)
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: -(11 - weekOffset), to: now),
+                  let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: weekStart)?.start else {
+                group.leave()
+                continue
+            }
+            
+            let endOfWeek = calendar.date(byAdding: .day, value: 7, to: startOfWeek) ?? startOfWeek
+            let endDate = min(endOfWeek, now)
+            
+            let predicate = HKQuery.predicateForSamples(withStart: startOfWeek, end: endDate, options: .strictStartDate)
+            
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                defer { group.leave() }
+                
+                guard let result = result, let sum = result.sumQuantity() else { return }
+                
+                let totalSteps = Int(sum.doubleValue(for: HKUnit.count()))
+                let daysInWeek = calendar.dateComponents([.day], from: startOfWeek, to: endDate).day ?? 1
+                let avgSteps = daysInWeek > 0 ? totalSteps / max(daysInWeek, 1) : 0
+                let progress = Double(avgSteps) / Double(self.dailyGoal)
+                
+                tempProgress[weekOffset] = progress
+                tempGoalMet[weekOffset] = progress >= 1.0
+            }
+            
+            healthStore.execute(query)
+        }
+        
+        group.notify(queue: .main) {
+            self.quarterProgress = tempProgress
+            self.quarterGoalMet = tempGoalMet
+        }
     }
     
     func fetchStepsForDate(_ date: Date) {
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        let startOfDay = Calendar.current.startOfDay(for: date)
-        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
-        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: endOfDay, options: .strictStartDate)
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        // FIX #4: For past dates, use endOfDay. For today, use current time.
+        let endDate = calendar.isDateInToday(date) ? Date() : endOfDay
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: endDate, options: .strictStartDate)
         
         let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
             guard let result = result, let sum = result.sumQuantity() else {
@@ -177,14 +321,20 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
             
             DispatchQueue.main.async {
+                let wasGoalReached = self.goalReached
+                
                 self.steps = Int(sum.doubleValue(for: HKUnit.count()))
                 self.goalReached = self.steps >= self.dailyGoal
                 
-                // FIX #5: Cache current steps for widget fallback
-                if Calendar.current.isDateInToday(date) {
+                // FIX #3: Show celebration when goal is newly reached
+                if calendar.isDateInToday(date) && self.goalReached && !wasGoalReached {
+                    self.triggerCelebration()
+                }
+                
+                // FIX #6: Cache current steps for widget
+                if calendar.isDateInToday(date) {
                     UserDefaults(suiteName: "group.alex.Step1")?.set(self.steps, forKey: "lastKnownSteps")
                     UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
-                    // Trigger widget update
                     WidgetCenter.shared.reloadAllTimelines()
                 }
             }

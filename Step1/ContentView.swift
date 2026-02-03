@@ -171,6 +171,9 @@ struct MainAppView: View {
     @Binding var showGoalEditor: Bool
     @Binding var lastDate: Date
     @State private var isRefreshing = false
+    @State private var previousPeriod: Int = 0  // track direction for transitions
+    @State private var showProfile = false  // FIX #8: Profile sheet
+    @State private var showCelebration = false  // FIX #4: Goal celebration
     
     var dateLabel: String {
         let calendar = Calendar.current
@@ -217,6 +220,16 @@ struct MainAppView: View {
                 healthManager.currentDate = newDate
                 healthManager.loadDataForCurrentDate()
             }
+        }
+    }
+    
+    // FIX #5: Jump directly to today
+    func jumpToToday() {
+        let today = Date()
+        withAnimation {
+            currentDate = today
+            healthManager.currentDate = today
+            healthManager.loadDataForCurrentDate()
         }
     }
     
@@ -278,7 +291,8 @@ struct MainAppView: View {
                         selectedPeriod: $selectedPeriod,
                         currentDate: $currentDate,
                         healthManager: healthManager,
-                        authManager: authManager
+                        authManager: authManager,
+                        onProfileTap: { showProfile = true }
                     )
                     .padding(.top, 8)
                     
@@ -297,44 +311,19 @@ struct MainAppView: View {
                                     onGoBack: { changeDate(by: -1) },
                                     onGoForward: { changeDate(by: 1) },
                                     canGoBack: canGoBack,
-                                    canGoForward: canGoForward
+                                    canGoForward: canGoForward,
+                                    onJumpToToday: jumpToToday
                                 )
                                 .onTapGesture {
                                     showGoalEditor = true
                                 }
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.82).combined(with: .opacity),
+                                    removal: .scale(scale: 0.82).combined(with: .opacity)
+                                ))
                                 
                                 // Distance / Time / Calories — daily
-                                metricTiles(
-                                    steps: healthManager.steps
-                                )
-                                
-                                // Progress Card (Day / Week toggle)
-                                ProgressCardView(
-                                    hourlyStepsToday: healthManager.hourlyStepsToday,
-                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
-                                    last7DaysProgress: healthManager.last7DaysProgress,
-                                    last7DaysLabels: healthManager.last7DaysLabels,
-                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
-                                    selectedDayOffset: dayOffset
-                                )
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                
-                                // Streak + Best Day tiles
-                                HStack(spacing: 8) {
-                                    StreakTile(
-                                        currentStreak: healthManager.streakCount,
-                                        maxStreak: healthManager.maxStreak
-                                    )
-                                    
-                                    BestDayTile(
-                                        bestSteps: healthManager.bestDaySteps,
-                                        bestDate: healthManager.bestDayDate
-                                    )
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                .padding(.bottom, 100)
+                                metricTiles(steps: healthManager.steps)
                                 
                             } else if selectedPeriod == 1 {
                                 // ===== WEEK VIEW =====
@@ -355,18 +344,20 @@ struct MainAppView: View {
                                     DragGesture(minimumDistance: 30)
                                         .onEnded { value in
                                             if value.translation.width > 50 {
-                                                // Swipe right = prev week
                                                 withAnimation(.easeInOut(duration: 0.3)) {
                                                     healthManager.fetchWeekSummary(offset: healthManager.weekOffset - 1)
                                                 }
                                             } else if value.translation.width < -50 && healthManager.weekOffset < 0 {
-                                                // Swipe left = next week (can't go past current)
                                                 withAnimation(.easeInOut(duration: 0.3)) {
                                                     healthManager.fetchWeekSummary(offset: healthManager.weekOffset + 1)
                                                 }
                                             }
                                         }
                                 )
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 1.15).combined(with: .opacity),
+                                    removal: .scale(scale: 0.85).combined(with: .opacity)
+                                ))
                                 
                                 // Distance / Time / Calories — weekly
                                 metricTiles(
@@ -377,36 +368,7 @@ struct MainAppView: View {
                                 )
                                 .padding(.top, 8)
                                 
-                                // Progress Card
-                                ProgressCardView(
-                                    hourlyStepsToday: healthManager.hourlyStepsToday,
-                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
-                                    last7DaysProgress: healthManager.last7DaysProgress,
-                                    last7DaysLabels: healthManager.last7DaysLabels,
-                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
-                                    selectedDayOffset: dayOffset
-                                )
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                
-                                // Streak + Best Day tiles
-                                HStack(spacing: 8) {
-                                    StreakTile(
-                                        currentStreak: healthManager.streakCount,
-                                        maxStreak: healthManager.maxStreak
-                                    )
-                                    
-                                    BestDayTile(
-                                        bestSteps: healthManager.bestDaySteps,
-                                        bestDate: healthManager.bestDayDate
-                                    )
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                .padding(.bottom, 100)
-                            }
-                            
-                            else if selectedPeriod == 2 {
+                            } else if selectedPeriod == 2 {
                                 // ===== MONTH VIEW =====
                                 MonthSummaryView(
                                     totalSteps: healthManager.monthSummaryTotal,
@@ -433,6 +395,24 @@ struct MainAppView: View {
                                 )
                                 .padding(.horizontal, 16)
                                 .padding(.top, 20)
+                                .gesture(
+                                    DragGesture(minimumDistance: 30)
+                                        .onEnded { value in
+                                            if value.translation.width > 50 {
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    healthManager.fetchMonthSummary(offset: healthManager.monthOffset - 1)
+                                                }
+                                            } else if value.translation.width < -50 && healthManager.monthOffset < 0 {
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    healthManager.fetchMonthSummary(offset: healthManager.monthOffset + 1)
+                                                }
+                                            }
+                                        }
+                                )
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 1.18).combined(with: .opacity),
+                                    removal: .scale(scale: 0.82).combined(with: .opacity)
+                                ))
                                 
                                 // Distance / Time / Calories — monthly
                                 metricTiles(
@@ -442,36 +422,41 @@ struct MainAppView: View {
                                     caloriesOverride: healthManager.monthSummaryTotalCalories
                                 )
                                 .padding(.top, 8)
-                                
-                                // Progress Card
-                                ProgressCardView(
-                                    hourlyStepsToday: healthManager.hourlyStepsToday,
-                                    hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
-                                    last7DaysProgress: healthManager.last7DaysProgress,
-                                    last7DaysLabels: healthManager.last7DaysLabels,
-                                    last7DaysGoalMet: healthManager.last7DaysGoalMet,
-                                    selectedDayOffset: dayOffset
-                                )
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                
-                                // Streak + Best Day tiles
-                                HStack(spacing: 8) {
-                                    StreakTile(
-                                        currentStreak: healthManager.streakCount,
-                                        maxStreak: healthManager.maxStreak
-                                    )
-                                    
-                                    BestDayTile(
-                                        bestSteps: healthManager.bestDaySteps,
-                                        bestDate: healthManager.bestDayDate
-                                    )
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                                .padding(.bottom, 100)
                             }
+                            
+                            // Progress Card (Day / Week / Quarter / Year)
+                            ProgressCardView(
+                                hourlyStepsToday: healthManager.hourlyStepsToday,
+                                hourlyStepsYesterday: healthManager.hourlyStepsYesterday,
+                                last7DaysProgress: healthManager.last7DaysProgress,
+                                last7DaysLabels: healthManager.last7DaysLabels,
+                                last7DaysGoalMet: healthManager.last7DaysGoalMet,
+                                selectedDayOffset: dayOffset,
+                                monthlyProgress: healthManager.yearProgress,
+                                monthlyGoalMet: healthManager.yearGoalMet,
+                                quarterProgress: healthManager.quarterProgress,
+                                quarterGoalMet: healthManager.quarterGoalMet
+                            )
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            
+                            // Streak + Best Day tiles
+                            HStack(spacing: 8) {
+                                StreakTile(
+                                    currentStreak: healthManager.streakCount,
+                                    maxStreak: healthManager.maxStreak
+                                )
+                                
+                                BestDayTile(
+                                    bestSteps: healthManager.bestDaySteps,
+                                    bestDate: healthManager.bestDayDate
+                                )
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .padding(.bottom, 100)
                         }
+                        .animation(.spring(response: 0.5, dampingFraction: 0.78), value: selectedPeriod)
                     }
                     .refreshable {
                         await refreshData()
@@ -482,6 +467,7 @@ struct MainAppView: View {
                         } else if newPeriod == 2 {
                             healthManager.fetchMonthSummary(offset: 0)
                         }
+                        previousPeriod = newPeriod
                     }
                     
                     Spacer()
@@ -490,6 +476,34 @@ struct MainAppView: View {
                     healthManager.currentDate = currentDate
                     healthManager.loadDataForCurrentDate()
                     lastDate = currentDate
+                    // FIX #4: Check if goal was reached while app was closed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        healthManager.checkCelebrationOnLaunch()
+                    }
+                }
+                .sheet(isPresented: $showProfile) {
+                    ProfileView(authManager: authManager, healthManager: healthManager)
+                }
+                .onChange(of: healthManager.shouldShowCelebration) { shouldShow in
+                    if shouldShow {
+                        healthManager.shouldShowCelebration = false
+                        // Show with delay (especially important when app just opened)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showCelebration = true
+                            }
+                        }
+                    }
+                }
+                .overlay {
+                    if showCelebration {
+                        GoalCelebrationView(
+                            steps: healthManager.steps,
+                            goal: healthManager.dailyGoal,
+                            isPresented: $showCelebration
+                        )
+                        .transition(.opacity)
+                    }
                 }
             } else if selectedTab == 1 {
                 // Leaderboard - only for logged in users

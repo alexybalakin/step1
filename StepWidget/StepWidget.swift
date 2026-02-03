@@ -28,16 +28,27 @@ struct StepProvider: TimelineProvider {
     }
     
     func getSnapshot(in context: Context, completion: @escaping (StepEntry) -> Void) {
+        // FIX #6: Use cached value first for faster display
+        let defaults = UserDefaults(suiteName: "group.alex.Step1")
+        let cachedSteps = defaults?.integer(forKey: "lastKnownSteps") ?? 0
+        let goal = defaults?.integer(forKey: "dailyStepGoal") ?? 10000
+        let actualGoal = goal > 0 ? goal : 10000
+        
+        // Return cached entry immediately
+        if context.isPreview {
+            completion(StepEntry(date: Date(), steps: 8765, goal: actualGoal, progress: 0.87, goalReached: false, multiplier: 0))
+            return
+        }
+        
         fetchSteps { steps in
-            let goal = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "dailyStepGoal") ?? 10000
-            let actualGoal = goal > 0 ? goal : 10000
-            let progress = min(Double(steps) / Double(actualGoal), 1.0)
-            let goalReached = steps >= actualGoal
-            let multiplier = actualGoal > 0 ? steps / actualGoal : 0
+            let finalSteps = steps > 0 ? steps : cachedSteps
+            let progress = min(Double(finalSteps) / Double(actualGoal), 1.0)
+            let goalReached = finalSteps >= actualGoal
+            let multiplier = actualGoal > 0 ? finalSteps / actualGoal : 0
             
             let entry = StepEntry(
                 date: Date(),
-                steps: steps,
+                steps: finalSteps,
                 goal: actualGoal,
                 progress: progress,
                 goalReached: goalReached,
@@ -48,16 +59,21 @@ struct StepProvider: TimelineProvider {
     }
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepEntry>) -> Void) {
+        // FIX #6: Use cached value first
+        let defaults = UserDefaults(suiteName: "group.alex.Step1")
+        let cachedSteps = defaults?.integer(forKey: "lastKnownSteps") ?? 0
+        let goal = defaults?.integer(forKey: "dailyStepGoal") ?? 10000
+        let actualGoal = goal > 0 ? goal : 10000
+        
         fetchSteps { steps in
-            let goal = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "dailyStepGoal") ?? 10000
-            let actualGoal = goal > 0 ? goal : 10000
-            let progress = min(Double(steps) / Double(actualGoal), 1.0)
-            let goalReached = steps >= actualGoal
-            let multiplier = actualGoal > 0 ? steps / actualGoal : 0
+            let finalSteps = steps > 0 ? steps : cachedSteps
+            let progress = min(Double(finalSteps) / Double(actualGoal), 1.0)
+            let goalReached = finalSteps >= actualGoal
+            let multiplier = actualGoal > 0 ? finalSteps / actualGoal : 0
             
             let entry = StepEntry(
                 date: Date(),
-                steps: steps,
+                steps: finalSteps,
                 goal: actualGoal,
                 progress: progress,
                 goalReached: goalReached,
@@ -91,43 +107,50 @@ struct StepProvider: TimelineProvider {
     
     func fetchSteps(completion: @escaping (Int) -> Void) {
         guard HKHealthStore.isHealthDataAvailable() else {
-            completion(0)
+            // Fall back to cached value
+            let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
+            completion(cached)
             return
         }
         
         let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
         
-        // FIX #5: Request authorization first (needed for widget extension)
-        healthStore.requestAuthorization(toShare: nil, read: [stepType]) { success, error in
-            guard success else {
-                DispatchQueue.main.async { completion(0) }
-                return
-            }
-            
-            let calendar = Calendar.current
-            let now = Date()
-            let startOfDay = calendar.startOfDay(for: now)
-            
-            let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
-            
-            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
-                DispatchQueue.main.async {
-                    guard let result = result, let sum = result.sumQuantity() else {
-                        // FIX #5: Fall back to cached value instead of 0
-                        let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
-                        completion(cached)
-                        return
-                    }
-                    let steps = Int(sum.doubleValue(for: HKUnit.count()))
-                    // FIX #5: Cache steps for fallback
+        // Check if we have authorization (don't request - widgets can't do that)
+        let authStatus = healthStore.authorizationStatus(for: stepType)
+        guard authStatus == .sharingAuthorized || authStatus == .notDetermined else {
+            // Not authorized, use cached value
+            let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
+            completion(cached)
+            return
+        }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+        
+        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+            DispatchQueue.main.async {
+                guard let result = result, let sum = result.sumQuantity() else {
+                    // Fall back to cached value
+                    let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
+                    completion(cached)
+                    return
+                }
+                let steps = Int(sum.doubleValue(for: HKUnit.count()))
+                
+                // Cache steps for fallback
+                if steps > 0 {
                     UserDefaults(suiteName: "group.alex.Step1")?.set(steps, forKey: "lastKnownSteps")
                     UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
-                    completion(steps)
                 }
+                
+                completion(steps > 0 ? steps : UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0)
             }
-            
-            self.healthStore.execute(query)
         }
+        
+        healthStore.execute(query)
     }
 }
 
@@ -202,10 +225,10 @@ struct SmallWidgetView: View {
                     }
                 }
                 
-                // Steps text
-                Text("\(entry.steps.formatted())")
+                // Steps text - always show something
+                Text(entry.steps > 0 ? entry.steps.formatted() : "—")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(entry.steps > 0 ? .white : Color(red: 142/255, green: 142/255, blue: 147/255))
                     .minimumScaleFactor(0.5)
                 
                 // Badge in top right corner, outside the ring

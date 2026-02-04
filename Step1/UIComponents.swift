@@ -572,8 +572,11 @@ struct SettingsView: View {
     @State private var morningNotificationEnabled = false
     @State private var goalNotificationEnabled = true
     @State private var streakNotificationEnabled = false
-    @State private var useMetric = true       // true = km/kg, false = mi/lbs
-    @State private var weekStartsMonday = true // true = Monday, false = Sunday
+    @State private var useMetric = true
+    @State private var weekStartsMonday = true
+    @State private var showShareSheet = false
+    
+    let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
     var body: some View {
         ZStack {
@@ -582,13 +585,10 @@ struct SettingsView: View {
             
             ScrollView {
                 VStack(spacing: 24) {
-                    Text("Settings")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 32)
+                    // No title - removed per request
+                    Spacer().frame(height: 16)
                     
+                    // Account
                     VStack(spacing: 0) {
                         SettingsSectionHeader(title: "ACCOUNT")
                         
@@ -607,6 +607,7 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 20)
                     
+                    // Goals
                     VStack(spacing: 0) {
                         SettingsSectionHeader(title: "GOALS")
                         
@@ -901,14 +902,26 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 20)
                     
-                    // Invite Friend Card
-                    InviteFriendCard()
-                        .padding(.horizontal, 20)
-                    
+                    // Links section (combined News & Support)
                     VStack(spacing: 0) {
-                        SettingsSectionHeader(title: "NEWS & SUPPORT")
+                        SettingsSectionHeader(title: "LINKS")
                         
                         VStack(spacing: 0) {
+                            // Invite Friends - first item
+                            Button(action: { showShareSheet = true }) {
+                                SettingsRowContent(
+                                    icon: "person.2.fill",
+                                    title: "Invite Friends",
+                                    value: "",
+                                    showChevron: true
+                                )
+                            }
+                            
+                            Divider()
+                                .background(Color(hex: "3A3A3C"))
+                                .padding(.leading, 52)
+                            
+                            // Telegram Channel
                             Button(action: {
                                 if let url = URL(string: "https://t.me/steplease") {
                                     UIApplication.shared.open(url)
@@ -973,13 +986,11 @@ struct SettingsView: View {
             if savedTime > 0 {
                 dailyReminderTime = Date(timeIntervalSince1970: savedTime)
             } else {
-                // Default 9 PM
                 var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
                 components.hour = 21
                 components.minute = 0
                 dailyReminderTime = Calendar.current.date(from: components) ?? Date()
             }
-            // Load unit preferences (default: metric, Monday)
             if UserDefaults.standard.object(forKey: "use_metric") != nil {
                 useMetric = UserDefaults.standard.bool(forKey: "use_metric")
             }
@@ -992,6 +1003,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showGoalEditor) {
             GoalEditorView(goal: $healthManager.dailyGoal)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: ["Join me on StePlease! Track your steps and compete with friends! \(appStoreLink)"])
         }
     }
 }
@@ -1453,7 +1467,8 @@ struct TopNavigationView: View {
     @Binding var currentDate: Date
     @ObservedObject var healthManager: HealthManager
     var authManager: AuthManager? = nil
-    var onProfileTap: (() -> Void)? = nil  // FIX #8: Profile navigation callback
+    var onProfileTap: (() -> Void)? = nil
+    var onMenuTap: (() -> Void)? = nil  // Menu callback
     @State private var showCalendar = false
     
     var canGoForward: Bool {
@@ -1566,9 +1581,9 @@ struct TopNavigationView: View {
             
             Spacer()
             
-            // Right - Options button
+            // Right - Options button (menu)
             Button(action: {
-                showCalendar = true
+                onMenuTap?()
             }) {
                 ZStack {
                     Circle()
@@ -1597,13 +1612,6 @@ struct TopNavigationView: View {
         }
         .frame(height: 44)
         .padding(.horizontal, 16)
-        .fullScreenCover(isPresented: $showCalendar) {
-            CalendarOverlayView(
-                selectedDate: $currentDate,
-                healthManager: healthManager,
-                isPresented: $showCalendar
-            )
-        }
     }
     
     func changeDate(by value: Int) {
@@ -2967,6 +2975,7 @@ struct ProgressCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Title area
             HStack(spacing: 10) {
                 Text(pageTitle)
                     .font(.system(size: 14, weight: .regular, design: .monospaced))
@@ -3007,6 +3016,12 @@ struct ProgressCardView: View {
         .background(Color(hex: "121212"))
         .cornerRadius(20)
         .contentShape(Rectangle())
+        .onTapGesture {
+            // Tap anywhere on card to go to next page
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                selectedPage = (selectedPage + 1) % pageCount
+            }
+        }
         .gesture(
             DragGesture(minimumDistance: 20)
                 .onChanged { value in dragOffset = value.translation.width * 0.3 }
@@ -3617,11 +3632,18 @@ struct LeaderboardLockedView: View {
 struct TopLeaderboardView: View {
     @ObservedObject var leaderboardManager: LeaderboardManager
     @ObservedObject var authManager: AuthManager
-    @ObservedObject var groupManager: GroupManager // NEW: Group Manager
+    @ObservedObject var groupManager: GroupManager
     @State private var selectedUser: LeaderboardUser?
     @State private var showMyProfile = false
-    @State private var selectedTab: GroupTab = .all // NEW: Track selected tab
-    @State private var showGroupDetail: CustomGroup? = nil // NEW: For group detail sheet
+    @State private var showProfile = false
+    @State private var selectedTab: GroupTab = .all
+    @State private var showGroupDetail: CustomGroup? = nil
+    @State private var dragOffset: CGFloat = 0
+    @State private var showMenu = false
+    @State private var showShareSheet = false
+    @State private var showStepsShareSheet = false
+    
+    let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
     var canGoForward: Bool {
         let calendar = Calendar.current
@@ -3638,6 +3660,20 @@ struct TopLeaderboardView: View {
         return calendar.startOfDay(for: tomorrow) <= calendar.startOfDay(for: Date())
     }
     
+    var isToday: Bool {
+        let calendar = Calendar.current
+        if leaderboardManager.selectedPeriod == 0 {
+            return calendar.isDateInToday(leaderboardManager.selectedDate)
+        } else if leaderboardManager.selectedPeriod == 1 {
+            let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: leaderboardManager.selectedDate))!
+            let currentWeekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date()))!
+            return weekStart == currentWeekStart
+        } else {
+            return calendar.component(.month, from: leaderboardManager.selectedDate) == calendar.component(.month, from: Date()) &&
+                   calendar.component(.year, from: leaderboardManager.selectedDate) == calendar.component(.year, from: Date())
+        }
+    }
+    
     var dateString: String {
         let calendar = Calendar.current
         let formatter = DateFormatter()
@@ -3645,19 +3681,21 @@ struct TopLeaderboardView: View {
         
         if leaderboardManager.selectedPeriod == 0 {
             if calendar.isDateInToday(leaderboardManager.selectedDate) {
-                return "TODAY"
+                return "Today"
+            } else if calendar.isDateInYesterday(leaderboardManager.selectedDate) {
+                return "Yesterday"
             } else {
                 formatter.dateFormat = "MMM d"
-                return formatter.string(from: leaderboardManager.selectedDate).uppercased()
+                return formatter.string(from: leaderboardManager.selectedDate)
             }
         } else if leaderboardManager.selectedPeriod == 1 {
             formatter.dateFormat = "MMM d"
             let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: leaderboardManager.selectedDate))!
             let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
-            return "\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd))".uppercased()
+            return "\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd))"
         } else {
-            formatter.dateFormat = "MMM"
-            return formatter.string(from: leaderboardManager.selectedDate).uppercased()
+            formatter.dateFormat = "MMMM"
+            return formatter.string(from: leaderboardManager.selectedDate)
         }
     }
     
@@ -3667,180 +3705,318 @@ struct TopLeaderboardView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header - 32px from safe area
-                HStack {
-                    Text("Leaderboard")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.white)
+                // Top Navigation (exactly like main screen)
+                HStack(spacing: 0) {
+                    // Profile button (left) - same style as TopNavigationView
+                    Button(action: { showProfile = true }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "0A0A0A").opacity(0.95))
+                            
+                            if !authManager.isAnonymous && !authManager.userName.isEmpty {
+                                Circle()
+                                    .fill(Color(hex: "34C759"))
+                                
+                                Text(String(authManager.userName.prefix(1)).uppercased())
+                                    .font(.system(size: 17, weight: .bold))
+                                    .foregroundColor(.black)
+                            } else {
+                                Circle()
+                                    .stroke(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.25), location: 0),
+                                                .init(color: Color.white.opacity(0.1), location: 0.5),
+                                                .init(color: Color.white.opacity(0.02), location: 1)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 1
+                                    )
+                                
+                                Image(systemName: "person.crop.circle")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                    }
                     
                     Spacer()
                     
-                    // Profile button
-                    Button(action: {
-                        showMyProfile = true
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: "34C759"))
-                                .frame(width: 40, height: 40)
-                            
-                            Text(String(authManager.userName.prefix(1).uppercased()))
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.black)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 32)
-                
-                // First row: Date selector + Period selector - 32px below header
-                HStack(spacing: 8) {
-                    // Date selector - fixed width
+                    // Period selector (D W M) - exactly like TopNavigationView
                     HStack(spacing: 0) {
-                        Button(action: { changeDate(by: -1) }) {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.white)
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 28, height: 32)
-                        }
-                        
-                        Text(dateString)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 56)
-                        
-                        Button(action: { changeDate(by: 1) }) {
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 28, height: 32)
-                        }
-                        .disabled(!canGoForward)
-                    }
-                    .frame(height: 32)
-                    .background(Color(hex: "1A1A1C"))
-                    .cornerRadius(8)
-                    
-                    // Period selector - fills remaining space
-                    HStack(spacing: 0) {
-                        ForEach(["DAY", "WEEK", "MONTH"], id: \.self) { period in
-                            let index = period == "DAY" ? 0 : (period == "WEEK" ? 1 : 2)
+                        ForEach(0..<3, id: \.self) { index in
+                            let labels = ["D", "W", "M"]
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     leaderboardManager.selectedPeriod = index
                                     leaderboardManager.refresh()
                                 }
                             }) {
-                                Text(period)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(leaderboardManager.selectedPeriod == index ? .white : Color(hex: "8E8E93"))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 32)
-                                    .background(
-                                        leaderboardManager.selectedPeriod == index ?
-                                        Color(hex: "3A3A3C") : Color.clear
-                                    )
-                                    .cornerRadius(8)
+                                ZStack {
+                                    if leaderboardManager.selectedPeriod == index {
+                                        Circle()
+                                            .fill(Color(hex: "1A1A1A"))
+                                            .frame(width: 36, height: 36)
+                                    }
+                                    
+                                    Text(labels[index])
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(leaderboardManager.selectedPeriod == index ? .white : Color(hex: "8E8E93"))
+                                }
+                                .frame(width: 36, height: 36)
                             }
                         }
                     }
-                    .background(Color(hex: "1A1A1C"))
-                    .cornerRadius(8)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(
+                        ZStack {
+                            Capsule()
+                                .fill(Color(hex: "0A0A0A").opacity(0.95))
+                            
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.25), location: 0),
+                                            .init(color: Color.white.opacity(0.1), location: 0.5),
+                                            .init(color: Color.white.opacity(0.02), location: 1)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        }
+                    )
+                    .frame(height: 44)
+                    
+                    Spacer()
+                    
+                    // Menu button (right) - same style
+                    Button(action: { withAnimation(.easeOut(duration: 0.2)) { showMenu = true } }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "0A0A0A").opacity(0.95))
+                            
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.25), location: 0),
+                                            .init(color: Color.white.opacity(0.1), location: 0.5),
+                                            .init(color: Color.white.opacity(0.02), location: 1)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                            
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        .frame(width: 44, height: 44)
+                    }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 32)
+                .frame(height: 44)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
                 
-                // NEW: Scrollable tabs - ALL | FRIENDS | Groups | +
-                GroupTabSelector(
-                    leaderboardManager: leaderboardManager,
-                    groupManager: groupManager,
-                    selectedTab: $selectedTab
+                // Date Header (sticky, 64px height)
+                HStack(spacing: 0) {
+                    // Left dot in 36x36 tappable container
+                    Button(action: { changeDate(by: -1) }) {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 6, height: 6)
+                    }
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+                    .padding(.leading, 0)
+                    
+                    Spacer()
+                    
+                    // Date text - "Today" white, others grey
+                    Text(dateString)
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundColor(isToday ? .white : Color(hex: "8E8E93"))
+                    
+                    // Today button (only for Day period when not today)
+                    if leaderboardManager.selectedPeriod == 0 && !isToday {
+                        Button(action: {
+                            withAnimation {
+                                leaderboardManager.selectedDate = Date()
+                                leaderboardManager.refresh()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text("Today")
+                                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            }
+                            .foregroundColor(.white)
+                        }
+                        .padding(.leading, 12)
+                    }
+                    
+                    Spacer()
+                    
+                    // Right dot in 36x36 tappable container
+                    Button(action: { if canGoForward { changeDate(by: 1) } }) {
+                        Circle()
+                            .fill(canGoForward ? Color.white : Color(hex: "3A3A3C"))
+                            .frame(width: 6, height: 6)
+                    }
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+                    .disabled(!canGoForward)
+                    .padding(.trailing, 0)
+                }
+                .frame(height: 64)
+                .padding(.horizontal, 0)
+                .background(Color(hex: "0A0A0A"))
+                .zIndex(1)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 20)
+                        .onChanged { value in
+                            dragOffset = value.translation.width * 0.3
+                        }
+                        .onEnded { value in
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                dragOffset = 0
+                            }
+                            if value.translation.width > 50 {
+                                changeDate(by: -1)
+                            } else if value.translation.width < -50 && canGoForward {
+                                changeDate(by: 1)
+                            }
+                        }
                 )
-                .padding(.top, 16)
                 
-                // List content based on selected tab
+                // Leaderboard List
                 if leaderboardManager.isLoading {
                     Spacer()
-                    ProgressView()
-                        .tint(.white)
+                    ProgressView().tint(.white)
+                    Spacer()
+                } else if leaderboardManager.users.isEmpty {
+                    Spacer()
+                    Text("No users yet")
+                        .font(.system(size: 17))
+                        .foregroundColor(Color(hex: "8E8E93"))
                     Spacer()
                 } else {
-                    switch selectedTab {
-                    case .all:
-                        if leaderboardManager.users.isEmpty {
-                            emptyStateView(message: "No users yet")
-                        } else {
-                            LeaderboardList(leaderboardManager: leaderboardManager, onUserTap: { user in
-                                selectedUser = user
-                            })
-                            .padding(.top, 32)
-                        }
-                        
-                    case .friends:
-                        if leaderboardManager.filteredUsers.isEmpty {
-                            emptyStateView(message: "No friends yet", subtitle: "Add friends from the leaderboard")
-                        } else {
-                            ZStack(alignment: .bottomTrailing) {
-                                LeaderboardList(leaderboardManager: leaderboardManager, onUserTap: { user in
-                                    selectedUser = user
-                                })
-                                .padding(.top, 32)
-                                
-                                CompactInviteButton()
-                                    .padding(.trailing, 20)
-                                    .padding(.bottom, 100)
-                            }
-                        }
-                        
-                    case .group(let groupId):
-                        if let group = groupManager.userGroups.first(where: { $0.id == groupId }) {
-                            GroupLeaderboardView(
-                                group: group,
-                                groupManager: groupManager,
-                                leaderboardManager: leaderboardManager,
-                                onUserTap: { user in selectedUser = user },
-                                onGroupTap: { showGroupDetail = group }
-                            )
-                        }
-                    }
+                    NewLeaderboardList(
+                        leaderboardManager: leaderboardManager,
+                        onUserTap: { user in selectedUser = user },
+                        onSwipeDate: { value in changeDate(by: value) }
+                    )
                 }
+            }
+            
+            // Bottom gradient overlay
+            VStack {
+                Spacer()
+                LinearGradient(
+                    colors: [Color(hex: "0A0A0A").opacity(0), Color(hex: "0A0A0A")],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 100)
+                .allowsHitTesting(false)
+            }
+            .ignoresSafeArea()
+            
+            // Menu Overlay
+            if showMenu {
+                Color.black.opacity(0.80)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                    }
+                
+                VStack {
+                    HStack {
+                        Spacer()
+                        
+                        // Menu positioned at top right with border
+                        VStack(spacing: 0) {
+                            // Invite Friends
+                            Button(action: {
+                                withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showShareSheet = true
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 16))
+                                        .frame(width: 20, height: 20)
+                                    Text("Invite Friends")
+                                        .font(.system(size: 15, weight: .regular))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                            }
+                            .contentShape(Rectangle())
+                            
+                            // Share Steps
+                            Button(action: {
+                                withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showStepsShareSheet = true
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "figure.walk")
+                                        .font(.system(size: 16))
+                                        .frame(width: 20, height: 20)
+                                    Text("Share Steps")
+                                        .font(.system(size: 15, weight: .regular))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .background(Color(hex: "1C1C1E"))
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color(hex: "3A3A3C"), lineWidth: 0.5)
+                        )
+                        .fixedSize(horizontal: true, vertical: true)
+                        .padding(.trailing, 16)
+                        .padding(.top, 60)
+                    }
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
             }
         }
         .sheet(item: $selectedUser) { user in
             UserProfileView(user: user, leaderboardManager: leaderboardManager, authManager: authManager)
         }
-        .sheet(isPresented: $showMyProfile) {
-            MyProfileView(authManager: authManager, leaderboardManager: leaderboardManager)
+        .sheet(isPresented: $showProfile) {
+            ProfileView(authManager: authManager, healthManager: HealthManager())
         }
-        .sheet(item: $showGroupDetail) { group in
-            GroupDetailsSheet(group: group, groupManager: groupManager, leaderboardManager: leaderboardManager)
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: ["Join me on StePlease! Track your steps and compete with friends! \(appStoreLink)"])
         }
-        .onChange(of: selectedTab) { _, newTab in
-            // Update leaderboardManager.showFriendsOnly based on tab
-            switch newTab {
-            case .all:
-                leaderboardManager.showFriendsOnly = false
-            case .friends:
-                leaderboardManager.showFriendsOnly = true
-            case .group:
-                leaderboardManager.showFriendsOnly = false
-            }
+        .sheet(isPresented: $showStepsShareSheet) {
+            // Steps banner share - TODO: implement proper banner generation
+            ShareSheet(items: ["I walked \(leaderboardManager.users.first(where: { $0.id == leaderboardManager.currentUserID })?.steps.formatted() ?? "0") steps today! 🚶‍♂️ Track your steps with StePlease! \(appStoreLink)"])
         }
-    }
-    
-    @ViewBuilder
-    func emptyStateView(message: String, subtitle: String? = nil) -> some View {
-        Spacer()
-        Text(message)
-            .font(.system(size: 17))
-            .foregroundColor(Color(hex: "8E8E93"))
-        if let subtitle = subtitle {
-            Text(subtitle)
-                .font(.system(size: 15))
-                .foregroundColor(Color(hex: "8E8E93"))
-                .padding(.top, 8)
-        }
-        Spacer()
     }
     
     func changeDate(by value: Int) {
@@ -3861,6 +4037,178 @@ struct TopLeaderboardView: View {
                 leaderboardManager.refresh()
             }
         }
+    }
+}
+
+// MARK: - New Leaderboard List
+struct NewLeaderboardList: View {
+    @ObservedObject var leaderboardManager: LeaderboardManager
+    var onUserTap: ((LeaderboardUser) -> Void)?
+    var onSwipeDate: ((Int) -> Void)? // Callback for date change
+    @State private var currentUserRowPosition: CGFloat? = nil
+    @State private var scrollViewHeight: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
+    
+    var currentUserRank: Int? {
+        leaderboardManager.filteredUsers.firstIndex(where: { $0.id == leaderboardManager.currentUserID }).map { $0 + 1 }
+    }
+    
+    var isCurrentUserVisible: Bool {
+        guard let position = currentUserRowPosition else { return false }
+        let bottomThreshold = scrollViewHeight - 140
+        return position >= 0 && position < bottomThreshold
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(leaderboardManager.filteredUsers.enumerated()), id: \.element.id) { index, user in
+                            NewLeaderboardRow(
+                                rank: index + 1,
+                                user: user,
+                                isCurrentUser: user.id == leaderboardManager.currentUserID
+                            )
+                            .onTapGesture { onUserTap?(user) }
+                            .opacity(shouldHideInList(user: user) ? 0 : 1)
+                            .background(
+                                Group {
+                                    if user.id == leaderboardManager.currentUserID {
+                                        GeometryReader { rowGeometry in
+                                            Color.clear.preference(
+                                                key: CurrentUserPositionKey.self,
+                                                value: rowGeometry.frame(in: .named("leaderboardScroll")).minY
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .padding(.bottom, 160)
+                }
+                .coordinateSpace(name: "leaderboardScroll")
+                .onPreferenceChange(CurrentUserPositionKey.self) { position in
+                    currentUserRowPosition = position
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 30)
+                        .onChanged { value in
+                            dragOffset = value.translation.width * 0.3
+                        }
+                        .onEnded { value in
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                dragOffset = 0
+                            }
+                            if value.translation.width > 50 {
+                                onSwipeDate?(-1) // Go back
+                            } else if value.translation.width < -50 {
+                                onSwipeDate?(1) // Go forward
+                            }
+                        }
+                )
+                
+                // Sticky current user row when not visible (no top line, moved down 8px)
+                if !isCurrentUserVisible, let rank = currentUserRank {
+                    if let currentUser = leaderboardManager.filteredUsers.first(where: { $0.id == leaderboardManager.currentUserID }) {
+                        NewLeaderboardRow(
+                            rank: rank,
+                            user: currentUser,
+                            isCurrentUser: true,
+                            showDivider: false
+                        )
+                        .onTapGesture { onUserTap?(currentUser) }
+                        .frame(height: 52)
+                        .background(Color(hex: "101010"))
+                        .padding(.bottom, 80) // Moved down 8px more (was 88, now 80 = closer to tab bar)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.2), value: isCurrentUserVisible)
+                    }
+                }
+            }
+            .onAppear { scrollViewHeight = geometry.size.height }
+            .onChange(of: geometry.size.height) { _, newHeight in scrollViewHeight = newHeight }
+        }
+    }
+    
+    private func shouldHideInList(user: LeaderboardUser) -> Bool {
+        return user.id == leaderboardManager.currentUserID && !isCurrentUserVisible
+    }
+}
+
+// MARK: - New Leaderboard Row
+struct NewLeaderboardRow: View {
+    let rank: Int
+    let user: LeaderboardUser
+    let isCurrentUser: Bool
+    var showDivider: Bool = true
+    
+    var rankDisplay: AnyView {
+        switch rank {
+        case 1:
+            return AnyView(Text("🥇").font(.system(size: 28)))
+        case 2:
+            return AnyView(Text("🥈").font(.system(size: 28)))
+        case 3:
+            return AnyView(Text("🥉").font(.system(size: 28)))
+        default:
+            return AnyView(
+                Text("\(rank)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Color(hex: "8E8E93"))
+            )
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Rank (40px width)
+                rankDisplay
+                    .frame(width: 40, alignment: .center)
+                
+                // Avatar (36x36)
+                ZStack {
+                    Circle()
+                        .fill(isCurrentUser ? Color(hex: "34C759") : Color(hex: "3A3A3C"))
+                        .frame(width: 36, height: 36)
+                    
+                    if isCurrentUser {
+                        Circle()
+                            .stroke(Color(hex: "34C759"), lineWidth: 2)
+                            .frame(width: 42, height: 42)
+                    }
+                    
+                    Text(user.avatarLetter)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(isCurrentUser ? .black : .white)
+                }
+                
+                // Name
+                Text(user.name)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(isCurrentUser ? .white : Color(hex: "8E8E93"))
+                
+                Spacer()
+                
+                // Steps
+                Text(user.steps.formatted())
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 52)
+            
+            // Bottom divider - full width with 16px padding on both sides
+            if showDivider {
+                Rectangle()
+                    .fill(Color(hex: "1A1A1A"))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }
 

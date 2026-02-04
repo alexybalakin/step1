@@ -164,16 +164,21 @@ struct MainAppView: View {
     @ObservedObject var authManager: AuthManager
     @ObservedObject var healthManager: HealthManager
     @ObservedObject var leaderboardManager: LeaderboardManager
-    @ObservedObject var groupManager: GroupManager // NEW: Group Manager
+    @ObservedObject var groupManager: GroupManager
     @Binding var selectedTab: Int
     @Binding var selectedPeriod: Int
     @Binding var currentDate: Date
     @Binding var showGoalEditor: Bool
     @Binding var lastDate: Date
     @State private var isRefreshing = false
-    @State private var previousPeriod: Int = 0  // track direction for transitions
-    @State private var showProfile = false  // FIX #8: Profile sheet
-    @State private var showCelebration = false  // FIX #4: Goal celebration
+    @State private var previousPeriod: Int = 0
+    @State private var showProfile = false
+    @State private var showCelebration = false
+    @State private var showMenu = false
+    @State private var showShareSheet = false
+    @State private var showStepsShareSheet = false
+    
+    let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
     var dateLabel: String {
         let calendar = Calendar.current
@@ -292,7 +297,8 @@ struct MainAppView: View {
                         currentDate: $currentDate,
                         healthManager: healthManager,
                         authManager: authManager,
-                        onProfileTap: { showProfile = true }
+                        onProfileTap: { showProfile = true },
+                        onMenuTap: { withAnimation(.easeOut(duration: 0.2)) { showMenu = true } }
                     )
                     .padding(.top, 8)
                     
@@ -528,16 +534,85 @@ struct MainAppView: View {
                 Spacer()
                 BottomNavigationView(selectedTab: $selectedTab)
             }
+            
+            // Menu Overlay for main screen
+            if showMenu && selectedTab == 0 {
+                Color.black.opacity(0.80)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                    }
+                
+                VStack {
+                    HStack {
+                        Spacer()
+                        
+                        // Menu positioned at top right with border
+                        VStack(spacing: 0) {
+                            // Invite Friends
+                            Button(action: {
+                                withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showShareSheet = true
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 16))
+                                        .frame(width: 20, height: 20)
+                                    Text("Invite Friends")
+                                        .font(.system(size: 15, weight: .regular))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                            }
+                            .contentShape(Rectangle())
+                            
+                            // Share Steps
+                            Button(action: {
+                                withAnimation(.easeOut(duration: 0.2)) { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showStepsShareSheet = true
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "figure.walk")
+                                        .font(.system(size: 16))
+                                        .frame(width: 20, height: 20)
+                                    Text("Share Steps")
+                                        .font(.system(size: 15, weight: .regular))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .background(Color(hex: "1C1C1E"))
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color(hex: "3A3A3C"), lineWidth: 0.5)
+                        )
+                        .fixedSize(horizontal: true, vertical: true)
+                        .padding(.trailing, 16)
+                        .padding(.top, 60)
+                    }
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
             healthManager.requestAuthorization()
-            // Sync steps after delay to ensure data is loaded
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if Calendar.current.isDateInToday(currentDate) {
                     leaderboardManager.updateCurrentUserSteps(healthManager.steps, name: authManager.userName)
                 }
-                // Sync historical steps (last 30 days)
                 healthManager.getHistoricalSteps(days: 30) { history in
                     leaderboardManager.syncHistoricalSteps(steps: history, name: authManager.userName)
                 }
@@ -546,10 +621,14 @@ struct MainAppView: View {
         .sheet(isPresented: $showGoalEditor) {
             GoalEditorView(goal: $healthManager.dailyGoal)
         }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: ["Join me on StePlease! Track your steps and compete with friends! \(appStoreLink)"])
+        }
+        .sheet(isPresented: $showStepsShareSheet) {
+            ShareSheet(items: ["I walked \(healthManager.steps.formatted()) steps today! 🚶‍♂️ Track your steps with StePlease! \(appStoreLink)"])
+        }
         .background(DateChangeHandler(currentDate: $currentDate, lastDate: $lastDate, healthManager: healthManager))
-        // Sync steps to leaderboard when they change
         .onChange(of: healthManager.steps) { _, newSteps in
-            // Sync today's steps (including 0)
             if Calendar.current.isDateInToday(currentDate) {
                 leaderboardManager.updateCurrentUserSteps(newSteps, name: authManager.userName)
             }

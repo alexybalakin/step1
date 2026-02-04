@@ -9,6 +9,7 @@ import SwiftUI
 import HealthKit
 import CoreLocation
 import WidgetKit
+import ActivityKit
 
 class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     let healthStore = HKHealthStore()
@@ -336,6 +337,11 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                     UserDefaults(suiteName: "group.alex.Step1")?.set(self.steps, forKey: "lastKnownSteps")
                     UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
                     WidgetCenter.shared.reloadAllTimelines()
+                    
+                    // Update Live Activity
+                    if #available(iOS 16.1, *) {
+                        self.updateLiveActivity()
+                    }
                 }
             }
         }
@@ -1039,6 +1045,61 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         group.notify(queue: .main) {
             completion(stepsHistory)
+        }
+    }
+    
+    // MARK: - Live Activities
+    
+    @available(iOS 16.1, *)
+    func startLiveActivity() {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            print("Live Activities not enabled")
+            return
+        }
+        
+        // End any existing activities first
+        endLiveActivity()
+        
+        let attributes = StepWidgetAttributes(userName: "User")
+        let state = StepWidgetAttributes.ContentState(
+            steps: steps,
+            goal: dailyGoal,
+            progress: progress
+        )
+        
+        do {
+            let activity = try Activity<StepWidgetAttributes>.request(
+                attributes: attributes,
+                contentState: state,
+                pushType: nil
+            )
+            print("Started Live Activity: \(activity.id)")
+        } catch {
+            print("Error starting Live Activity: \(error)")
+        }
+    }
+    
+    @available(iOS 16.1, *)
+    func updateLiveActivity() {
+        Task {
+            let state = StepWidgetAttributes.ContentState(
+                steps: steps,
+                goal: dailyGoal,
+                progress: progress
+            )
+            
+            for activity in Activity<StepWidgetAttributes>.activities {
+                await activity.update(using: state)
+            }
+        }
+    }
+    
+    @available(iOS 16.1, *)
+    func endLiveActivity() {
+        Task {
+            for activity in Activity<StepWidgetAttributes>.activities {
+                await activity.end(dismissalPolicy: .immediate)
+            }
         }
     }
 }

@@ -66,6 +66,13 @@
 			);
 			target = 178573C02F1D4C07007C6A0B /* Step1 */;
 		};
+		17B52DEC2F339BE600125139 /* Exceptions for "Step1" folder in "StepWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				StepWidgetAttributes.swift,
+			);
+			target = 175DD31B2F221FF10066392A /* StepWidgetExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -81,6 +88,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				178573D12F1D4F04007C6A0B /* Exceptions for "Step1" folder in "Step1" target */,
+				17B52DEC2F339BE600125139 /* Exceptions for "Step1" folder in "StepWidgetExtension" target */,
 			);
 			path = Step1;
 			sourceTree = "<group>";
@@ -474,6 +482,9 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to track walking distance";
+				INFOPLIST_KEY_NSMotionUsageDescription = "StePlease uses motion data to accurately track your steps";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -514,6 +525,9 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to read your step count and activity data";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to read your health data";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to track walking distance";
+				INFOPLIST_KEY_NSMotionUsageDescription = "StePlease uses motion data to accurately track your steps";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

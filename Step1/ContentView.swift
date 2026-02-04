@@ -609,6 +609,14 @@ struct MainAppView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             healthManager.requestAuthorization()
+            
+            // Start Live Activity
+            if #available(iOS 16.1, *) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    healthManager.startLiveActivity()
+                }
+            }
+            
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if Calendar.current.isDateInToday(currentDate) {
                     leaderboardManager.updateCurrentUserSteps(healthManager.steps, name: authManager.userName)

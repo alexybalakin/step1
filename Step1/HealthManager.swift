@@ -8,12 +8,14 @@
 import SwiftUI
 import HealthKit
 import CoreLocation
+import CoreMotion
 import WidgetKit
 import ActivityKit
 
 class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     let healthStore = HKHealthStore()
     let locationManager = CLLocationManager()
+    let pedometer = CMPedometer()
     
     @Published var steps: Int = 0
     @Published var distance: Double = 0.0
@@ -143,6 +145,25 @@ class HealthManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         
         locationManager.requestWhenInUseAuthorization()
+        
+        // Request Motion & Fitness permission (CoreMotion)
+        requestMotionPermission()
+    }
+    
+    private func requestMotionPermission() {
+        guard CMPedometer.isStepCountingAvailable() else {
+            print("Step counting not available")
+            return
+        }
+        
+        // This triggers the Motion & Fitness permission dialog
+        pedometer.queryPedometerData(from: Date().addingTimeInterval(-86400), to: Date()) { data, error in
+            if let error = error {
+                print("Pedometer error: \(error.localizedDescription)")
+            } else {
+                print("Motion & Fitness permission granted")
+            }
+        }
     }
     
     // MARK: - FIX #5: Enable background delivery for widget updates

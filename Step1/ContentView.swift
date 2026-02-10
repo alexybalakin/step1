@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import CoreMotion
 
 struct ContentView: View {
     @StateObject private var authManager = AuthManager()
@@ -66,9 +67,29 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                // Only run data/pedometer logic if user is authenticated and onboarding is done
+                // This prevents system permission dialogs from appearing over login/onboarding screens
+                guard authManager.isAuthenticated && isOnboardingComplete else { return }
+
+                // Re-verify HK access (user may have toggled it in Settings)
+                // This is synchronous — healthKitConnected is updated immediately
+                healthManager.verifyHealthKitAccess()
+
                 // App came to foreground - check if day changed
                 checkDayChange()
                 scheduleMidnightReset()
+                // Restart pedometer streaming only if motion was already authorized
+                if CMMotionPermissionHelper.isMotionAuthorized() {
+                    healthManager.startPedometerUpdates()
+                }
+                // loadDataForCurrentDate is already called inside checkDayChange()
+                // and respects healthKitConnected guard (no need for extra delayed call)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    healthManager.checkAndTriggerCelebration()
+                }
+            } else if newPhase == .background {
+                healthManager.stopPedometerUpdates()
+                Step1App.scheduleBackgroundSync()
             }
         }
         .onChange(of: authManager.isAuthenticated) { _, isAuth in
@@ -131,13 +152,20 @@ struct ContentView: View {
     }
     
     private func checkDayChange() {
-        let calendar = Calendar.current
-        if !calendar.isDateInToday(currentDate) {
-            // Day has changed, reset to today
-            currentDate = Date()
-            healthManager.currentDate = Date()
-            healthManager.loadDataForCurrentDate()
+        // Just restart pedometer for new day if needed — don't force navigate to today
+        // User stays on whatever date they were viewing
+        if CMMotionPermissionHelper.isMotionAuthorized() {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let savedDate = UserDefaults.standard.string(forKey: "pedometerStepsDate") ?? ""
+            let todayKey = formatter.string(from: Date())
+            if savedDate != todayKey {
+                // New day detected — restart pedometer
+                healthManager.restartPedometerForNewDay()
+            }
         }
+        // Reload data for the currently viewed date (refresh any stale data)
+        healthManager.loadDataForCurrentDate()
     }
     
     private func scheduleMidnightReset() {
@@ -177,6 +205,10 @@ struct MainAppView: View {
     @State private var showMenu = false
     @State private var showShareSheet = false
     @State private var showStepsShareSheet = false
+    @State private var showPermissionBanner = false
+    @State private var showStreakPopup = false
+    @State private var showBestDayPopup = false
+    @State private var showHealthDisconnected = false
     
     let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
@@ -304,6 +336,38 @@ struct MainAppView: View {
                     
                     ScrollView {
                         VStack(spacing: 0) {
+                            // Permission banner — only show if no HK permission and not dismissed permanently
+                            if showPermissionBanner && !healthManager.isHealthKitAuthorized() && !UserDefaults.standard.bool(forKey: "healthBannerDismissed") {
+                                Button(action: {
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        showHealthDisconnected = true
+                                    }
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "heart.text.square.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(Color(hex: "FF2D55"))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Apple Health Disconnected")
+                                                .font(.system(size: 15, weight: .semibold))
+                                                .foregroundColor(.white)
+                                            Text("Tap to connect")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(Color(hex: "8E8E93"))
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(Color(hex: "8E8E93"))
+                                    }
+                                    .padding(16)
+                                    .background(Color(hex: "1A1A1C"))
+                                    .cornerRadius(12)
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.top, 8)
+                            }
+
                             if selectedPeriod == 0 {
                                 // ===== DAY VIEW =====
                                 CircularProgressView(
@@ -450,12 +514,14 @@ struct MainAppView: View {
                             HStack(spacing: 8) {
                                 StreakTile(
                                     currentStreak: healthManager.streakCount,
-                                    maxStreak: healthManager.maxStreak
+                                    maxStreak: healthManager.maxStreak,
+                                    showPopup: $showStreakPopup
                                 )
-                                
+
                                 BestDayTile(
                                     bestSteps: healthManager.bestDaySteps,
-                                    bestDate: healthManager.bestDayDate
+                                    bestDate: healthManager.bestDayDate,
+                                    showPopup: $showBestDayPopup
                                 )
                             }
                             .padding(.horizontal, 16)
@@ -482,23 +548,28 @@ struct MainAppView: View {
                     healthManager.currentDate = currentDate
                     healthManager.loadDataForCurrentDate()
                     lastDate = currentDate
-                    // FIX #4: Check if goal was reached while app was closed
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        healthManager.checkCelebrationOnLaunch()
+                    // Check if goal was reached while app was closed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        healthManager.checkAndTriggerCelebration()
                     }
                 }
                 .sheet(isPresented: $showProfile) {
                     ProfileView(authManager: authManager, healthManager: healthManager)
                 }
-                .onChange(of: healthManager.shouldShowCelebration) { shouldShow in
+                .onChange(of: healthManager.shouldShowCelebration) { _, shouldShow in
                     if shouldShow {
-                        healthManager.shouldShowCelebration = false
-                        // Show with delay (especially important when app just opened)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        // Show celebration with small delay for UI to settle
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             withAnimation(.easeOut(duration: 0.3)) {
                                 showCelebration = true
                             }
                         }
+                    }
+                }
+                .onChange(of: showCelebration) { _, isShowing in
+                    // Reset flag only when user dismisses celebration
+                    if !isShowing {
+                        healthManager.shouldShowCelebration = false
                     }
                 }
                 .overlay {
@@ -605,18 +676,79 @@ struct MainAppView: View {
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
             }
+
+            // Streak popup overlay
+            if showStreakPopup {
+                StreakPopup(
+                    currentStreak: healthManager.streakCount,
+                    maxStreak: healthManager.maxStreak,
+                    isPresented: $showStreakPopup
+                )
+                .transition(.opacity)
+                .zIndex(100)
+            }
+
+            // Best Day popup overlay
+            if showBestDayPopup {
+                BestDayPopup(
+                    bestSteps: healthManager.bestDaySteps,
+                    bestDate: healthManager.bestDayDate,
+                    isPresented: $showBestDayPopup
+                )
+                .transition(.opacity)
+                .zIndex(100)
+            }
+
+            // Health disconnected popup
+            if showHealthDisconnected {
+                HealthDisconnectedPopup(
+                    isPresented: $showHealthDisconnected,
+                    onConnect: {
+                        healthManager.requestHealthKitAuthorization()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    },
+                    onSkip: {
+                        // Hide banner permanently for this session
+                        UserDefaults.standard.set(true, forKey: "healthBannerDismissed")
+                        showPermissionBanner = false
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(100)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            healthManager.requestAuthorization()
-            
-            // Start Live Activity
-            if #available(iOS 16.1, *) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    healthManager.startLiveActivity()
-                }
+            // Verify HK access (async) — will update healthKitConnected
+            healthManager.verifyHealthKitAccess()
+
+            // Use initial sync state to load data
+            if healthManager.isHealthKitAuthorized() {
+                healthManager.loadDataForCurrentDate()
+                healthManager.enableBackgroundDeliveryPublic()
+                healthManager.startObservingStepsPublic()
+            } else {
+                showPermissionBanner = true
             }
-            
+
+            // Start pedometer real-time streaming only if motion permission was already granted
+            if CMMotionPermissionHelper.isMotionAuthorized() {
+                healthManager.startPedometerUpdates()
+            }
+
+            // Wire up Firestore sync callback
+            healthManager.onStepsUpdated = { [weak leaderboardManager, weak authManager] steps in
+                guard let lm = leaderboardManager, let am = authManager else { return }
+                lm.updateCurrentUserSteps(steps, name: am.userName)
+            }
+
+            // Live Activity is now started automatically when pedometer detects walking
+            // No need to force-start it here
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if Calendar.current.isDateInToday(currentDate) {
                     leaderboardManager.updateCurrentUserSteps(healthManager.steps, name: authManager.userName)
@@ -636,9 +768,35 @@ struct MainAppView: View {
             ShareSheet(items: ["I walked \(healthManager.steps.formatted()) steps today! 🚶‍♂️ Track your steps with StePlease! \(appStoreLink)"])
         }
         .background(DateChangeHandler(currentDate: $currentDate, lastDate: $lastDate, healthManager: healthManager))
+        .onChange(of: currentDate) { _, newDate in
+            // Sync leaderboard date with main screen date
+            leaderboardManager.selectedDate = newDate
+            leaderboardManager.refresh()
+        }
         .onChange(of: healthManager.steps) { _, newSteps in
             if Calendar.current.isDateInToday(currentDate) {
                 leaderboardManager.updateCurrentUserSteps(newSteps, name: authManager.userName)
+            }
+        }
+        .onChange(of: healthManager.healthKitConnected) { _, connected in
+            if connected {
+                // HK became connected — load data and hide banner
+                showPermissionBanner = false
+                showHealthDisconnected = false
+                healthManager.loadDataForCurrentDate()
+                healthManager.enableBackgroundDeliveryPublic()
+                healthManager.startObservingStepsPublic()
+            } else {
+                // HK disconnected — show banner and popup
+                showPermissionBanner = true
+                // Only auto-show popup if user had previously connected (not first-time users)
+                if UserDefaults.standard.bool(forKey: "healthKitWasConnectedBefore") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            showHealthDisconnected = true
+                        }
+                    }
+                }
             }
         }
     }

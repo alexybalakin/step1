@@ -28,20 +28,18 @@ struct StepProvider: TimelineProvider {
     }
     
     func getSnapshot(in context: Context, completion: @escaping (StepEntry) -> Void) {
-        // FIX #6: Use cached value first for faster display
         let defaults = UserDefaults(suiteName: "group.alex.Step1")
-        let cachedSteps = defaults?.integer(forKey: "lastKnownSteps") ?? 0
         let goal = defaults?.integer(forKey: "dailyStepGoal") ?? 10000
         let actualGoal = goal > 0 ? goal : 10000
-        
-        // Return cached entry immediately
+
+        // Return placeholder entry for preview
         if context.isPreview {
             completion(StepEntry(date: Date(), steps: 8765, goal: actualGoal, progress: 0.87, goalReached: false, multiplier: 0))
             return
         }
-        
+
         fetchSteps { steps in
-            let finalSteps = steps > 0 ? steps : cachedSteps
+            let finalSteps = max(steps, 0)
             let progress = min(Double(finalSteps) / Double(actualGoal), 1.0)
             let goalReached = finalSteps >= actualGoal
             let multiplier = actualGoal > 0 ? finalSteps / actualGoal : 0
@@ -59,37 +57,36 @@ struct StepProvider: TimelineProvider {
     }
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepEntry>) -> Void) {
-        // FIX #6: Use cached value first
         let defaults = UserDefaults(suiteName: "group.alex.Step1")
-        let cachedSteps = defaults?.integer(forKey: "lastKnownSteps") ?? 0
         let goal = defaults?.integer(forKey: "dailyStepGoal") ?? 10000
         let actualGoal = goal > 0 ? goal : 10000
-        
+
         fetchSteps { steps in
-            let finalSteps = steps > 0 ? steps : cachedSteps
+            let finalSteps = max(steps, 0)
             let progress = min(Double(finalSteps) / Double(actualGoal), 1.0)
             let goalReached = finalSteps >= actualGoal
             let multiplier = actualGoal > 0 ? finalSteps / actualGoal : 0
-            
-            let entry = StepEntry(
-                date: Date(),
+
+            let calendar = Calendar.current
+            let now = Date()
+            var entries: [StepEntry] = []
+
+            // Current entry
+            entries.append(StepEntry(
+                date: now,
                 steps: finalSteps,
                 goal: actualGoal,
                 progress: progress,
                 goalReached: goalReached,
                 multiplier: multiplier
-            )
-            
-            // FIX #5: More frequent updates + multiple entries for better stability
-            let calendar = Calendar.current
-            var entries: [StepEntry] = [entry]
-            
-            // Add future entries every 5 minutes for the next 30 minutes
+            ))
+
+            // Future entries every 5 minutes for the next 30 minutes
             for minuteOffset in stride(from: 5, through: 30, by: 5) {
-                if let futureDate = calendar.date(byAdding: .minute, value: minuteOffset, to: Date()) {
+                if let futureDate = calendar.date(byAdding: .minute, value: minuteOffset, to: now) {
                     entries.append(StepEntry(
                         date: futureDate,
-                        steps: steps,
+                        steps: finalSteps,
                         goal: actualGoal,
                         progress: progress,
                         goalReached: goalReached,
@@ -97,59 +94,87 @@ struct StepProvider: TimelineProvider {
                     ))
                 }
             }
-            
-            // Request update after the last entry
-            let nextUpdate = calendar.date(byAdding: .minute, value: 5, to: Date())!
+
+            // Add a midnight reset entry — show 0 steps at start of new day
+            let tomorrow = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now)!)
+            entries.append(StepEntry(
+                date: tomorrow,
+                steps: 0,
+                goal: actualGoal,
+                progress: 0,
+                goalReached: false,
+                multiplier: 0
+            ))
+
+            // Request next update in 5 minutes, or at midnight if it's sooner
+            let fiveMinLater = calendar.date(byAdding: .minute, value: 5, to: now)!
+            let nextUpdate = min(fiveMinLater, tomorrow)
             let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
             completion(timeline)
         }
     }
     
     func fetchSteps(completion: @escaping (Int) -> Void) {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            // Fall back to cached value
-            let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
-            completion(cached)
-            return
-        }
-        
-        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        
-        // Check if we have authorization (don't request - widgets can't do that)
-        let authStatus = healthStore.authorizationStatus(for: stepType)
-        guard authStatus == .sharingAuthorized || authStatus == .notDetermined else {
-            // Not authorized, use cached value
-            let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
-            completion(cached)
-            return
-        }
-        
+        let defaults = UserDefaults(suiteName: "group.alex.Step1")
         let calendar = Calendar.current
         let now = Date()
         let startOfDay = calendar.startOfDay(for: now)
-        
-        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
-        
-        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
-            DispatchQueue.main.async {
-                guard let result = result, let sum = result.sumQuantity() else {
-                    // Fall back to cached value
-                    let cached = UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0
-                    completion(cached)
-                    return
-                }
-                let steps = Int(sum.doubleValue(for: HKUnit.count()))
-                
-                // Cache steps for fallback
-                if steps > 0 {
-                    UserDefaults(suiteName: "group.alex.Step1")?.set(steps, forKey: "lastKnownSteps")
-                    UserDefaults(suiteName: "group.alex.Step1")?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
-                }
-                
-                completion(steps > 0 ? steps : UserDefaults(suiteName: "group.alex.Step1")?.integer(forKey: "lastKnownSteps") ?? 0)
-            }
+
+        // Read cached value from App Group (written by main app)
+        let cachedSteps = defaults?.integer(forKey: "lastKnownSteps") ?? 0
+        let lastUpdate = defaults?.double(forKey: "lastStepsUpdate") ?? 0
+
+        // Check if cache is from today
+        let cacheIsFromToday: Bool
+        if lastUpdate > 0 {
+            let lastDate = Date(timeIntervalSince1970: lastUpdate)
+            cacheIsFromToday = calendar.isDate(lastDate, inSameDayAs: now)
+        } else {
+            cacheIsFromToday = false
         }
-        
+
+        // If cache is stale (from yesterday), treat as 0
+        let todayCachedSteps = cacheIsFromToday ? cachedSteps : 0
+
+        guard HKHealthStore.isHealthDataAvailable() else {
+            completion(todayCachedSteps)
+            return
+        }
+
+        let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+
+        // Use HKStatisticsCollectionQuery to match Apple Health's values
+        let interval = DateComponents(day: 1)
+        let query = HKStatisticsCollectionQuery(
+            quantityType: stepType,
+            quantitySamplePredicate: nil,
+            options: .cumulativeSum,
+            anchorDate: startOfDay,
+            intervalComponents: interval
+        )
+
+        query.initialResultsHandler = { _, results, _ in
+            let stats = results?.statistics(for: startOfDay)
+            let hkSteps: Int
+            if let sum = stats?.sumQuantity() {
+                hkSteps = Int(sum.doubleValue(for: HKUnit.count()))
+            } else {
+                hkSteps = 0
+            }
+
+            // Use the best value: max of HK query and today's cache
+            // This prevents HK returning 0 (auth issue) from wiping good cached data
+            let finalSteps = max(hkSteps, todayCachedSteps)
+
+            // Only update cache if we got a real HK value (don't overwrite with 0)
+            if hkSteps > 0 {
+                defaults?.set(hkSteps, forKey: "lastKnownSteps")
+                defaults?.set(Date().timeIntervalSince1970, forKey: "lastStepsUpdate")
+            }
+
+            completion(finalSteps)
+        }
+
         healthStore.execute(query)
     }
 }
@@ -173,6 +198,8 @@ struct StepWidgetEntryView: View {
             SmallWidgetView(entry: entry, currentProgress: currentProgress)
         case .systemMedium:
             MediumWidgetView(entry: entry, currentProgress: currentProgress)
+        case .accessoryCircular:
+            AccessoryCircularView(entry: entry)
         default:
             SmallWidgetView(entry: entry, currentProgress: currentProgress)
         }
@@ -335,17 +362,62 @@ struct MediumWidgetView: View {
     }
 }
 
+// MARK: - Lock Screen Circular Widget
+struct AccessoryCircularView: View {
+    let entry: StepEntry
+
+    private var progress: Double {
+        guard entry.goal > 0 else { return 0 }
+        return min(Double(entry.steps) / Double(entry.goal), 1.0)
+    }
+
+    var body: some View {
+        ZStack {
+            // Background circle
+            Circle()
+                .stroke(lineWidth: 4)
+                .opacity(0.3)
+
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+
+            // Step count
+            Text(abbreviatedSteps(entry.steps))
+                .font(.system(size: 12, weight: .bold))
+                .minimumScaleFactor(0.5)
+        }
+        .containerBackground(for: .widget) { Color.clear }
+    }
+
+    private func abbreviatedSteps(_ steps: Int) -> String {
+        if steps >= 10000 {
+            let k = Double(steps) / 1000.0
+            return String(format: "%.0fk", k)
+        } else if steps >= 1000 {
+            let k = Double(steps) / 1000.0
+            if k == Double(Int(k)) {
+                return String(format: "%.0fk", k)
+            }
+            return String(format: "%.1fk", k)
+        }
+        return "\(steps)"
+    }
+}
+
 // MARK: - Widget Configuration
 struct StepWidget: Widget {
     let kind: String = "StepWidget"
-    
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StepProvider()) { entry in
             StepWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("StePlease")
         .description("Track your daily steps")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
     }
 }
 

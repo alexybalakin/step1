@@ -45,49 +45,257 @@ struct SplashScreenView: View {
     }
 }
 
-// MARK: - Onboarding View (Goal Selection)
+// MARK: - Onboarding Container (Multi-Step)
 struct OnboardingView: View {
     @ObservedObject var healthManager: HealthManager
     @Binding var isOnboardingComplete: Bool
     let userID: String
-    @State private var selectedGoal: Int = 10000
-    @State private var customGoalText: String = ""
-    @State private var showCustomInput: Bool = false
-    @FocusState private var isCustomInputFocused: Bool
-    
-    let goalOptions = [5000, 10000, 15000]
-    
+
+    // Steps: "health", "motion", "goal", "complete"
+    @State private var steps: [String] = []
+    @State private var currentIndex: Int = 0
+    @State private var isRequesting: Bool = false
+
     var body: some View {
         ZStack {
             Color(hex: "000200")
                 .ignoresSafeArea()
-                .onTapGesture {
-                    isCustomInputFocused = false
+
+            if steps.isEmpty {
+                // Loading — will compute steps in onAppear
+                Color.clear
+            } else if currentIndex < steps.count {
+                let step = steps[currentIndex]
+                Group {
+                    switch step {
+                    case "health":
+                        OnboardingHealthAccessScreen {
+                            guard !isRequesting else { return }
+                            isRequesting = true
+                            healthManager.requestHealthKitAuthorization { _ in
+                                isRequesting = false
+                                goToNext()
+                            }
+                        } onSkip: {
+                            goToNext()
+                        }
+                    case "motion":
+                        OnboardingMotionAccessScreen {
+                            guard !isRequesting else { return }
+                            isRequesting = true
+                            healthManager.requestMotionPermission { _ in
+                                isRequesting = false
+                                goToNext()
+                            }
+                        } onSkip: {
+                            goToNext()
+                        }
+                    case "goal":
+                        OnboardingGoalScreen(healthManager: healthManager) {
+                            goToNext()
+                        }
+                    case "complete":
+                        OnboardingCompleteScreen {
+                            UserDefaults.standard.set(true, forKey: "onboarding_\(userID)")
+                            isOnboardingComplete = true
+                        }
+                    default:
+                        EmptyView()
+                    }
                 }
-            
+                .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: currentIndex)
+        .onAppear {
+            buildSteps()
+        }
+    }
+
+    private func buildSteps() {
+        var result: [String] = []
+
+        // Only show health screen if not yet authorized
+        if !healthManager.isHealthKitAuthorized() {
+            result.append("health")
+        }
+
+        // Only show motion screen if not yet authorized
+        if !CMMotionPermissionHelper.isMotionAuthorized() {
+            result.append("motion")
+        }
+
+        result.append("goal")
+        result.append("complete")
+        steps = result
+    }
+
+    private func goToNext() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            currentIndex += 1
+        }
+    }
+}
+
+import CoreMotion
+
+// Helper to check CoreMotion authorization status
+enum CMMotionPermissionHelper {
+    static func isMotionAuthorized() -> Bool {
+        if #available(iOS 11.0, *) {
+            return CMMotionActivityManager.authorizationStatus() == .authorized
+        }
+        return false
+    }
+}
+
+// MARK: - Onboarding: Health Access Screen
+struct OnboardingHealthAccessScreen: View {
+    let onAllow: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            VStack(spacing: 20) {
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 70))
+                    .foregroundStyle(
+                        LinearGradient(colors: [Color(hex: "FF2D55"), Color(hex: "FF6482")], startPoint: .top, endPoint: .bottom)
+                    )
+
+                Text("Apple Health")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text("We use Apple Health to accurately count your steps, distance, and activity. Your data stays private and never leaves your device.")
+                    .font(.system(size: 17))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button(action: onAllow) {
+                    Text("Allow Access")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color(hex: "34C759"))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onSkip) {
+                    Text("Skip for now")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 60)
+        }
+    }
+}
+
+// MARK: - Onboarding: Motion & Fitness Screen
+struct OnboardingMotionAccessScreen: View {
+    let onAllow: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            VStack(spacing: 20) {
+                Image(systemName: "figure.walk.motion")
+                    .font(.system(size: 70))
+                    .foregroundStyle(
+                        LinearGradient(colors: [Color(hex: "34C759"), Color(hex: "30D158")], startPoint: .top, endPoint: .bottom)
+                    )
+
+                Text("Motion & Fitness")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text("Motion & Fitness provides real-time step tracking directly from your iPhone's sensors. Steps update instantly as you walk.")
+                    .font(.system(size: 17))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button(action: onAllow) {
+                    Text("Allow Access")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color(hex: "34C759"))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onSkip) {
+                    Text("Skip for now")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 60)
+        }
+    }
+}
+
+// MARK: - Onboarding: Goal Selection Screen
+struct OnboardingGoalScreen: View {
+    @ObservedObject var healthManager: HealthManager
+    let onContinue: () -> Void
+
+    @State private var selectedGoal: Int = 10000
+    @State private var customGoalText: String = ""
+    @State private var showCustomInput: Bool = false
+    @FocusState private var isCustomInputFocused: Bool
+
+    let goalOptions = [5000, 10000, 15000]
+
+    var body: some View {
+        ZStack {
+            Color(hex: "000200")
+                .ignoresSafeArea()
+                .onTapGesture { isCustomInputFocused = false }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 32) {
                         Spacer().frame(height: 60)
-                        
+
                         VStack(spacing: 16) {
-                            Text("🎯")
+                            Image(systemName: "target")
                                 .font(.system(size: 60))
-                            
+                                .foregroundColor(Color(hex: "34C759"))
+
                             Text("Set Your Daily Goal")
                                 .font(.system(size: 28, weight: .bold))
                                 .foregroundColor(.white)
-                            
+
                             Text("How many steps do you want to walk each day?")
                                 .font(.system(size: 17))
                                 .foregroundColor(Color(hex: "8E8E93"))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 40)
                         }
-                        
+
                         Spacer().frame(height: 20)
-                        
-                        // Goal options
+
                         VStack(spacing: 12) {
                             ForEach(goalOptions, id: \.self) { goal in
                                 Button(action: {
@@ -100,9 +308,7 @@ struct OnboardingView: View {
                                         Text("\(goal.formatted()) steps")
                                             .font(.system(size: 17, weight: .semibold))
                                             .foregroundColor(.white)
-                                        
                                         Spacer()
-                                        
                                         if selectedGoal == goal && !showCustomInput {
                                             Image(systemName: "checkmark")
                                                 .foregroundColor(Color(hex: "34C759"))
@@ -119,8 +325,7 @@ struct OnboardingView: View {
                                     )
                                 }
                             }
-                            
-                            // Custom input option
+
                             HStack {
                                 if showCustomInput {
                                     TextField("", text: $customGoalText, prompt: Text("Enter steps").foregroundColor(Color(hex: "8E8E93")))
@@ -138,13 +343,9 @@ struct OnboardingView: View {
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundColor(.white)
                                 }
-                                
                                 Spacer()
-                                
                                 if showCustomInput {
-                                    Button(action: {
-                                        isCustomInputFocused = false
-                                    }) {
+                                    Button(action: { isCustomInputFocused = false }) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(Color(hex: "34C759"))
                                     }
@@ -170,16 +371,14 @@ struct OnboardingView: View {
                             }
                         }
                         .padding(.horizontal, 20)
-                        
+
                         Spacer().frame(height: 40)
-                        
-                        // Continue button
+
                         Button {
                             isCustomInputFocused = false
                             healthManager.dailyGoal = selectedGoal
                             healthManager.saveDailyGoal()
-                            UserDefaults.standard.set(true, forKey: "onboarding_\(userID)")
-                            isOnboardingComplete = true
+                            onContinue()
                         } label: {
                             Text("Continue")
                                 .font(.system(size: 17, weight: .semibold))
@@ -199,13 +398,53 @@ struct OnboardingView: View {
                 .onChange(of: isCustomInputFocused) { _, focused in
                     if focused {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation {
-                                proxy.scrollTo("continueButton", anchor: .bottom)
-                            }
+                            withAnimation { proxy.scrollTo("continueButton", anchor: .bottom) }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Onboarding: Complete Screen
+struct OnboardingCompleteScreen: View {
+    let onStart: () -> Void
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            VStack(spacing: 20) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(Color(hex: "34C759"))
+
+                Text("You're All Set!")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text("Start walking and track your progress. You can change your goal and permissions anytime in Settings.")
+                    .font(.system(size: 17))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            Spacer()
+
+            Button(action: onStart) {
+                Text("Start")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color(hex: "34C759"))
+                    .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 60)
         }
     }
 }
@@ -1088,6 +1327,61 @@ struct ProfileView: View {
                         Spacer()
                             .frame(height: 40)
                         
+                        // Permissions
+                        VStack(spacing: 0) {
+                            SettingsSectionHeader(title: "PERMISSIONS")
+
+                            VStack(spacing: 0) {
+                                NavigationLink(destination: AppleHealthSettingsView(healthManager: healthManager)) {
+                                    SettingsRowContent(
+                                        icon: "heart.text.square.fill",
+                                        title: "Apple Health",
+                                        value: healthManager.healthKitConnected ? "Connected" : "Not connected",
+                                        showChevron: true
+                                    )
+                                }
+
+                                Divider()
+                                    .background(Color(hex: "3A3A3C"))
+                                    .padding(.leading, 52)
+
+                                Button(action: {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }) {
+                                    SettingsRowContent(
+                                        icon: "figure.walk.motion",
+                                        title: "Motion & Fitness",
+                                        value: CMMotionPermissionHelper.isMotionAuthorized() ? "Allowed" : "Not set",
+                                        showChevron: true
+                                    )
+                                }
+
+                                Divider()
+                                    .background(Color(hex: "3A3A3C"))
+                                    .padding(.leading, 52)
+
+                                Button(action: {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }) {
+                                    SettingsRowContent(
+                                        icon: "gear",
+                                        title: "Open System Settings",
+                                        value: "",
+                                        showChevron: true
+                                    )
+                                }
+                            }
+                            .background(Color(hex: "1A1A1C"))
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 20)
+
+                        Spacer().frame(height: 16)
+
                         // Sign Out & Delete
                         VStack(spacing: 12) {
                             Button(action: {
@@ -1403,26 +1697,34 @@ struct SettingsSectionHeader: View {
 struct SettingsRowContent: View {
     let icon: String
     let title: String
+    var subtitle: String? = nil
     let value: String
     let showChevron: Bool
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 20))
                 .foregroundColor(Color(hex: "34C759"))
                 .frame(width: 28)
-            
-            Text(title)
-                .font(.system(size: 17))
-                .foregroundColor(.white)
-            
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 17))
+                    .foregroundColor(.white)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+            }
+
             Spacer()
-            
+
             Text(value)
                 .font(.system(size: 17))
                 .foregroundColor(Color(hex: "8E8E93"))
-            
+
             if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
@@ -1977,6 +2279,8 @@ struct CircularProgressView: View {
                                 Text("\(goalMultiplier)X")
                                     .font(.system(size: 14, weight: .bold, design: .rounded))
                                     .foregroundColor(.black)
+                                    .contentTransition(.numericText())
+                                    .animation(.easeOut(duration: 0.4), value: goalMultiplier)
                             } else {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 14, weight: .bold))
@@ -1989,16 +2293,21 @@ struct CircularProgressView: View {
                     Text(dateLabel)
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(goalReached ? Color(hex: "00CA48") : Color(hex: "8E8E93"))
-                    
+                        .contentTransition(.interpolate)
+                        .animation(.easeOut(duration: 0.3), value: dateLabel)
+
                     Text("\(steps.formatted())")
                         .font(.system(size: 44, weight: .bold))
                         .foregroundColor(.white)
-                        .contentTransition(.numericText())
-                    
+                        .contentTransition(.numericText(countsDown: false))
+                        .animation(.easeOut(duration: 0.6), value: steps)
+
                     Text("Goal \(goal.formatted())")
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(Color(hex: "8E8E93"))
-                    
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.4), value: goal)
+
                     ZStack {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .medium))
@@ -2006,11 +2315,6 @@ struct CircularProgressView: View {
                     }
                     .frame(width: 34, height: 34)
                 }
-                .id(dateLabel)
-                .transition(.asymmetric(
-                    insertion: .move(edge: swipeDirection <= 0 ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: swipeDirection <= 0 ? .trailing : .leading).combined(with: .opacity)
-                ))
             }
             .frame(width: containerSize, height: containerSize)
             .clipShape(Circle())
@@ -2116,7 +2420,9 @@ struct StatCard: View {
                 Text(value)
                     .font(.system(size: 36, weight: .bold))
                     .foregroundColor(.white)
-                
+                    .contentTransition(.numericText())
+                    .animation(.easeOut(duration: 0.5), value: value)
+
                 Text(unit)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Color(hex: "8E8E93"))
@@ -2133,8 +2439,8 @@ struct StatCard: View {
 struct StreakTile: View {
     let currentStreak: Int
     let maxStreak: Int
-    @State private var showPopup = false
-    
+    @Binding var showPopup: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header with chevron
@@ -2142,12 +2448,12 @@ struct StreakTile: View {
                 Text("Streak")
                     .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundColor(Color(hex: "8E8E93"))
-                
+
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "8E8E93"))
             }
-            
+
             // Current streak value
             HStack(spacing: 2) {
                 Text("\(currentStreak)")
@@ -2157,7 +2463,7 @@ struct StreakTile: View {
                     .font(.system(size: 16))
                     .opacity(currentStreak > 0 ? 1.0 : 0.5)
             }
-            
+
             // Max streak
             Text("MAX \(maxStreak)")
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
@@ -2168,106 +2474,126 @@ struct StreakTile: View {
         .background(Color(hex: "121212"))
         .cornerRadius(20)
         .onTapGesture {
-            showPopup = true
-        }
-        .sheet(isPresented: $showPopup) {
-            StreakPopup(currentStreak: currentStreak, maxStreak: maxStreak, isPresented: $showPopup)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(Color.black.opacity(0.80))
+            withAnimation(.easeOut(duration: 0.25)) { showPopup = true }
         }
     }
 }
 
-// MARK: - Streak Popup
+// MARK: - Streak Popup (Bottom Sheet)
 struct StreakPopup: View {
     let currentStreak: Int
     let maxStreak: Int
     @Binding var isPresented: Bool
-    
+    @State private var sheetOffset: CGFloat = 500
+
     var body: some View {
-        ZStack {
-            // Background 80% opacity
-            Color.black.opacity(0.80)
+        ZStack(alignment: .bottom) {
+            // Dimmed background
+            Color.black.opacity(0.70)
                 .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
+                .onTapGesture { dismiss() }
+
+            // Bottom sheet
+            VStack(spacing: 16) {
+                // Drag indicator
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(hex: "3A3A3C"))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 10)
+
                 // Header with close button
                 HStack {
                     Text("Streak")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white)
-                    
+
                     Spacer()
-                    
-                    Button(action: { isPresented = false }) {
+
+                    Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(Color(hex: "8E8E93"))
-                            .frame(width: 32, height: 32)
-                            .background(Color(hex: "1A1A1A"))
+                            .frame(width: 30, height: 30)
+                            .background(Color(hex: "1C1C1E"))
                             .clipShape(Circle())
                     }
                 }
-                .padding(.top, 8)
-                
+
                 // Stats
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     VStack(spacing: 8) {
                         HStack(spacing: 4) {
                             Text("\(currentStreak)")
-                                .font(.system(size: 46, weight: .bold))
+                                .font(.system(size: 40, weight: .bold))
                                 .foregroundColor(.white)
                             Text("🔥")
-                                .font(.system(size: 36))
+                                .font(.system(size: 30))
                         }
                         Text("Current Streak")
-                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            .font(.system(size: 13, weight: .regular, design: .monospaced))
                             .foregroundColor(Color(hex: "8E8E93"))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .background(Color(hex: "121212"))
-                    .cornerRadius(16)
-                    
+                    .padding(.vertical, 16)
+                    .background(Color(hex: "1C1C1E"))
+                    .cornerRadius(14)
+
                     VStack(spacing: 8) {
                         HStack(spacing: 4) {
                             Text("\(maxStreak)")
-                                .font(.system(size: 46, weight: .bold))
-                                .foregroundColor(.white)  // FIX #2: White instead of green
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundColor(.white)
                             Text("🏆")
-                                .font(.system(size: 36))
+                                .font(.system(size: 30))
                         }
                         Text("Best Streak")
-                            .font(.system(size: 14, weight: .regular, design: .monospaced))
+                            .font(.system(size: 13, weight: .regular, design: .monospaced))
                             .foregroundColor(Color(hex: "8E8E93"))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .background(Color(hex: "121212"))
-                    .cornerRadius(16)
+                    .padding(.vertical, 16)
+                    .background(Color(hex: "1C1C1E"))
+                    .cornerRadius(14)
                 }
-                
+
                 // Explanation
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("How Streaks Work")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    
-                    Text("A streak counts consecutive days where you've reached your daily step goal. Each day you hit your target, your streak grows by one. Missing a day resets it to zero.\n\nStreaks are a great way to build healthy habits and stay motivated!")
-                        .font(.system(size: 14, weight: .regular))
+
+                    Text("A streak counts consecutive days where you've reached your daily step goal. Each day you hit your target, your streak grows by one. Missing a day resets it to zero.")
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundColor(Color(hex: "8E8E93"))
-                        .lineSpacing(4)
+                        .lineSpacing(3)
                 }
-                .padding(16)
+                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(hex: "121212"))
-                .cornerRadius(16)
-                
-                Spacer()
+                .background(Color(hex: "1C1C1E"))
+                .cornerRadius(14)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.bottom, 34)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(hex: "161618"))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .offset(y: sheetOffset)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sheetOffset = 0
+            }
+        }
+    }
+
+    private func dismiss() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            sheetOffset = 500
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isPresented = false
         }
     }
 }
@@ -2337,7 +2663,7 @@ struct GoalCelebrationView: View {
                         isPresented = false
                     }
                 }) {
-                    Text("Keep Going!")
+                    Text("Yeah!")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
@@ -2369,7 +2695,7 @@ struct GoalCelebrationView: View {
 struct BestDayTile: View {
     let bestSteps: Int
     let bestDate: Date?
-    @State private var showPopup = false
+    @Binding var showPopup: Bool
     
     private var dateString: String {
         guard let date = bestDate else { return "—" }
@@ -2407,13 +2733,7 @@ struct BestDayTile: View {
         .background(Color(hex: "121212"))
         .cornerRadius(20)
         .onTapGesture {
-            showPopup = true
-        }
-        .sheet(isPresented: $showPopup) {
-            BestDayPopup(bestSteps: bestSteps, bestDate: bestDate, isPresented: $showPopup)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(Color.black.opacity(0.80))
+            withAnimation(.easeOut(duration: 0.25)) { showPopup = true }
         }
     }
 }
@@ -2423,7 +2743,8 @@ struct BestDayPopup: View {
     let bestSteps: Int
     let bestDate: Date?
     @Binding var isPresented: Bool
-    
+    @State private var sheetOffset: CGFloat = 500
+
     private var dateString: String {
         guard let date = bestDate else { return "—" }
         let formatter = DateFormatter()
@@ -2431,7 +2752,7 @@ struct BestDayPopup: View {
         formatter.locale = Locale(identifier: "en_US")
         return formatter.string(from: date)
     }
-    
+
     private var daysAgo: String {
         guard let date = bestDate else { return "" }
         let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
@@ -2439,82 +2760,487 @@ struct BestDayPopup: View {
         if days == 1 { return "Yesterday" }
         return "\(days) days ago"
     }
-    
+
     var body: some View {
-        VStack(spacing: 20) {
-            // Header with close button - proper spacing
-            HStack {
-                Text("Best Day")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                Button(action: { isPresented = false }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                        .frame(width: 32, height: 32)
-                        .background(Color(hex: "1A1A1A"))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.top, 8)
-            
-            // Main stat - white color, size 46
-            VStack(spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("\(bestSteps.formatted())")
-                        .font(.system(size: 46, weight: .bold))
+        ZStack(alignment: .bottom) {
+            // Dimmed background
+            Color.black.opacity(0.70)
+                .ignoresSafeArea()
+                .onTapGesture { dismiss() }
+
+            // Bottom sheet
+            VStack(spacing: 16) {
+                // Drag indicator
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(hex: "3A3A3C"))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 10)
+
+                // Header with close button
+                HStack {
+                    Text("Best Day")
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white)
-                    Text("👑")
-                        .font(.system(size: 36))
+
+                    Spacer()
+
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .frame(width: 30, height: 30)
+                            .background(Color(hex: "1C1C1E"))
+                            .clipShape(Circle())
+                    }
                 }
-                
-                Text("steps")
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(hex: "8E8E93"))
+
+                // Main stat
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text("\(bestSteps.formatted())")
+                            .font(.system(size: 40, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("👑")
+                            .font(.system(size: 30))
+                    }
+
+                    Text("steps")
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color(hex: "1C1C1E"))
+                .cornerRadius(14)
+
+                // Date info
+                VStack(spacing: 6) {
+                    Text(dateString)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+
+                    Text(daysAgo)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(hex: "1C1C1E"))
+                .cornerRadius(14)
+
+                // Explanation
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("About Best Day")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+
+                    Text("This is your personal record — the highest number of steps you've taken in a single day. Keep challenging yourself to beat it!")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(Color(hex: "8E8E93"))
+                        .lineSpacing(3)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: "1C1C1E"))
+                .cornerRadius(14)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .background(Color(hex: "121212"))
-            .cornerRadius(16)
-            
-            // Date info
-            VStack(spacing: 8) {
-                Text(dateString)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text(daysAgo)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Color(hex: "8E8E93"))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color(hex: "121212"))
-            .cornerRadius(16)
-            
-            // Explanation
-            VStack(alignment: .leading, spacing: 12) {
-                Text("About Best Day")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text("This is your personal record — the highest number of steps you've taken in a single day. Keep challenging yourself to beat it!")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Color(hex: "8E8E93"))
-                    .lineSpacing(4)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(hex: "121212"))
-            .cornerRadius(16)
-            
-            Spacer()
+            .padding(.horizontal, 20)
+            .padding(.bottom, 34)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(hex: "161618"))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .offset(y: sheetOffset)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sheetOffset = 0
+            }
+        }
+    }
+
+    private func dismiss() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            sheetOffset = 500
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isPresented = false
+        }
+    }
+}
+
+// MARK: - Apple Health Settings View
+struct AppleHealthSettingsView: View {
+    @ObservedObject var healthManager: HealthManager
+    @Environment(\.dismiss) var dismiss
+    @State private var syncEnabled: Bool = true
+    @State private var isFetching = false
+    @State private var lastFetchTime: String = "Never"
+
+    var body: some View {
+        ZStack {
+            Color(hex: "0A0A0A")
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer().frame(height: 8)
+
+                    // Sync with Apple Health
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "SYNC WITH APPLE HEALTH")
+
+                        VStack(spacing: 0) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "figure.walk")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "34C759"))
+                                    .cornerRadius(6)
+
+                                Text("Steps")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                Toggle("", isOn: $syncEnabled)
+                                    .labelsHidden()
+                                    .tint(Color(hex: "00CA48"))
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+
+                        Text("StePlease syncs step data from Apple Health. Your data stays private and never leaves your device.")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .padding(.horizontal, 4)
+                            .padding(.top, 8)
+                    }
+                    .padding(.horizontal, 20)
+
+                    // Fetch
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "DATA")
+
+                        VStack(spacing: 0) {
+                            Button(action: {
+                                fetchNow()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color(hex: "007AFF"))
+                                        .cornerRadius(6)
+
+                                    Text("Fetch Now")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.white)
+
+                                    Spacer()
+
+                                    if isFetching {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.8)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                            }
+                            .disabled(isFetching)
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+
+                        Text("Last Fetch: \(lastFetchTime)")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .padding(.horizontal, 4)
+                            .padding(.top, 8)
+                    }
+                    .padding(.horizontal, 20)
+
+                    // Status
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "STATUS")
+
+                        VStack(spacing: 0) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "heart.text.square.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(hex: "FF2D55"))
+                                    .frame(width: 28)
+
+                                Text("Apple Health")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                Text(healthManager.healthKitConnected ? "Connected" : "Not connected")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(healthManager.healthKitConnected ? Color(hex: "34C759") : Color(hex: "FF3B30"))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+
+                            if !healthManager.healthKitConnected {
+                                Divider()
+                                    .background(Color(hex: "3A3A3C"))
+                                    .padding(.leading, 52)
+
+                                Button(action: {
+                                    healthManager.requestHealthKitAuthorization()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(Color(hex: "34C759"))
+                                            .frame(width: 28)
+
+                                        Text("Connect Apple Health")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(Color(hex: "34C759"))
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                }
+                            }
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+
+                        if !healthManager.healthKitConnected {
+                            Text("To enable, go to Settings → Health → Data Access & Devices → Sources → StePlease")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .padding(.horizontal, 4)
+                                .padding(.top, 8)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+
+                    Spacer().frame(height: 100)
+                }
+            }
+        }
+        .navigationTitle("Apple Health")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear {
+            syncEnabled = UserDefaults.standard.object(forKey: "healthKitSyncEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "healthKitSyncEnabled")
+            healthManager.verifyHealthKitAccess()
+            updateLastFetchTime()
+            // Auto-sync on screen appear
+            if syncEnabled && healthManager.healthKitConnected {
+                fetchNow()
+            }
+        }
+        .onChange(of: syncEnabled) { _, enabled in
+            UserDefaults.standard.set(enabled, forKey: "healthKitSyncEnabled")
+            if enabled && healthManager.healthKitConnected {
+                fetchNow()
+            }
+        }
+    }
+
+    private func fetchNow() {
+        isFetching = true
+        healthManager.loadDataForCurrentDate()
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastHealthFetchTime")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            isFetching = false
+            updateLastFetchTime()
+        }
+    }
+
+    private func updateLastFetchTime() {
+        let timestamp = UserDefaults.standard.double(forKey: "lastHealthFetchTime")
+        if timestamp > 0 {
+            let date = Date(timeIntervalSince1970: timestamp)
+            let elapsed = Date().timeIntervalSince(date)
+            if elapsed < 60 {
+                lastFetchTime = "Just now"
+            } else if elapsed < 3600 {
+                let mins = Int(elapsed / 60)
+                lastFetchTime = "\(mins) min ago"
+            } else if elapsed < 86400 {
+                let hours = Int(elapsed / 3600)
+                lastFetchTime = "\(hours) hour\(hours > 1 ? "s" : "") ago"
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "d MMM, HH:mm"
+                lastFetchTime = formatter.string(from: date)
+            }
+        } else {
+            lastFetchTime = "Never"
+        }
+    }
+}
+
+// MARK: - Health Disconnected Popup (Bottom Sheet)
+struct HealthDisconnectedPopup: View {
+    @Binding var isPresented: Bool
+    @State private var showInstructions = false
+    @State private var sheetOffset: CGFloat = 600
+    var onConnect: () -> Void
+    var onSkip: (() -> Void)? = nil
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            // Dimmed background
+            Color.black.opacity(0.70)
+                .ignoresSafeArea()
+                .onTapGesture { dismiss() }
+
+            // Bottom sheet
+            VStack(spacing: 20) {
+                // Drag indicator
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(hex: "3A3A3C"))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, 10)
+
+                if !showInstructions {
+                    // Main content — disconnected state
+                    VStack(spacing: 16) {
+                        Image(systemName: "heart.text.square.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color(hex: "FF2D55"))
+
+                        Text("Apple Health Disconnected")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+
+                        Text("Your steps are no longer synced with Apple Health, because we don't have the permission to.")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                    }
+
+                    // Buttons
+                    VStack(spacing: 12) {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                showInstructions = true
+                            }
+                        }) {
+                            Text("Connect Now")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(Color(hex: "FF2D55"))
+                                .cornerRadius(14)
+                        }
+
+                        Button(action: { onSkip?(); dismiss() }) {
+                            Text("Continue with Motion Sensor")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(Color(hex: "1C1C1E"))
+                                .cornerRadius(14)
+                        }
+                    }
+                } else {
+                    // Instructions content
+                    VStack(spacing: 16) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(Color(hex: "8E8E93"))
+
+                        Text("We need your permission")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+
+                        Text("We need your permission to access Apple Health.")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "8E8E93"))
+                            .multilineTextAlignment(.center)
+                    }
+
+                    // Steps
+                    VStack(alignment: .leading, spacing: 14) {
+                        instructionRow(number: "1", icon: "gearshape.fill", iconColor: Color(hex: "8E8E93"), text: "Settings")
+                        instructionRow(number: "2", icon: "hand.raised.fill", iconColor: Color(hex: "007AFF"), text: "Privacy & Security")
+                        instructionRow(number: "3", icon: "heart.fill", iconColor: Color(hex: "FF2D55"), text: "Health")
+                        instructionRow(number: "4", icon: "figure.walk", iconColor: Color(hex: "34C759"), text: "StePlease")
+                        instructionRow(number: "5", icon: "togglepower", iconColor: Color(hex: "34C759"), text: "Enable all switches")
+                    }
+                    .padding(16)
+                    .background(Color(hex: "1C1C1E"))
+                    .cornerRadius(14)
+
+                    Button(action: {
+                        onConnect()
+                        dismiss()
+                    }) {
+                        Text("Open Settings")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(hex: "FF2D55"))
+                            .cornerRadius(14)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 34)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(hex: "161618"))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .offset(y: sheetOffset)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sheetOffset = 0
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func instructionRow(number: String, icon: String, iconColor: Color, text: String) -> some View {
+        HStack(spacing: 14) {
+            Text(number)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundColor(Color(hex: "8E8E93"))
+                .frame(width: 22)
+
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(iconColor)
+                .frame(width: 24, height: 24)
+
+            Text(text)
+                .font(.system(size: 15))
+                .foregroundColor(.white)
+        }
+    }
+
+    private func dismiss() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            sheetOffset = 600
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isPresented = false
+        }
     }
 }
 
@@ -2551,7 +3277,9 @@ struct WeekSummaryView: View {
     let endDate: Date
     let dailyGoal: Int
     let weekStartsMonday: Bool
-    
+
+    @State private var barAnimation: CGFloat = 0
+
     private let dayLabels = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
     private let dayLabelsSun = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
     
@@ -2616,10 +3344,12 @@ struct WeekSummaryView: View {
                     Text("Week summary")
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(Color(hex: "8E8E93"))
-                    
+
                     Text("\(totalSteps.formatted())")
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white)
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.5), value: totalSteps)
                 }
                 
                 Spacer()
@@ -2679,37 +3409,41 @@ struct WeekSummaryView: View {
                         let x = CGFloat(i) * (barWidth + spacing)
                         let steps = dailySteps[i]
                         let ratio = steps > 0 ? CGFloat(steps) / CGFloat(maxDailySteps) : 0
-                        let barH = max(ratio * barAreaHeight, steps > 0 ? 8 : 4)
+                        let fullBarH = max(ratio * barAreaHeight, steps > 0 ? 8 : 4)
+                        let barH = fullBarH * barAnimation
                         let barY = chartTop + barAreaHeight - barH
                         let goalMet = dailyGoalMet[i]
                         let isTodayBar = isCurrentWeek && i == todayIndex
                         let isFuture = isCurrentWeek && i > todayIndex
-                        
+
                         // Value label above bar
                         if steps > 0 {
                             Text(formatSteps(steps))
                                 .font(.system(size: 12, weight: .regular, design: .monospaced))
                                 .foregroundColor(Color(hex: "8E8E93"))
                                 .position(x: x + barWidth / 2, y: barY - 10)
+                                .opacity(Double(barAnimation))
                         }
-                        
+
                         // Bar
                         if steps > 0 || !isFuture {
                             ZStack(alignment: .bottom) {
                                 RoundedRectangle(cornerRadius: 10)
                                     .fill(goalMet ? Color(hex: "00CA48") : Color(hex: "373737"))
                                     .frame(width: barWidth, height: barH)
-                                
+
                                 if goalMet && steps >= dailyGoal * 2 {
                                     Text("2X")
                                         .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(.black)
                                         .padding(.bottom, 8)
+                                        .opacity(Double(barAnimation))
                                 } else if goalMet {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 11, weight: .bold))
                                         .foregroundColor(.black)
                                         .padding(.bottom, 8)
+                                        .opacity(Double(barAnimation))
                                 }
                             }
                             .position(x: x + barWidth / 2, y: barY + barH / 2)
@@ -2719,7 +3453,7 @@ struct WeekSummaryView: View {
                                 .frame(width: barWidth, height: 4)
                                 .position(x: x + barWidth / 2, y: chartTop + barAreaHeight - 2)
                         }
-                        
+
                         // Day label
                         Text(labels[i])
                             .font(.system(size: 10, weight: isTodayBar ? .bold : .regular, design: .monospaced))
@@ -2735,6 +3469,12 @@ struct WeekSummaryView: View {
         .frame(height: 292)
         .background(Color(hex: "121212"))
         .cornerRadius(20)
+        .onAppear {
+            barAnimation = 0
+            withAnimation(.easeOut(duration: 0.8)) {
+                barAnimation = 1
+            }
+        }
     }
 }
 
@@ -2751,7 +3491,9 @@ struct MonthSummaryView: View {
     let canGoForward: Bool
     let onPrev: () -> Void
     let onNext: () -> Void
-    
+
+    @State private var calendarAnimation: CGFloat = 0
+
     private let dayLabels = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
     private let dayLabelsSun = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
     
@@ -2805,10 +3547,12 @@ struct MonthSummaryView: View {
                     Text("Month summary")
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(Color(hex: "8E8E93"))
-                    
+
                     Text("\(totalSteps.formatted())")
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white)
+                        .contentTransition(.numericText())
+                        .animation(.easeOut(duration: 0.5), value: totalSteps)
                 }
                 
                 Spacer()
@@ -2864,26 +3608,26 @@ struct MonthSummaryView: View {
                                     let isToday = dayNum == todayDay
                                     let isPast = isDayPast(dayNum)
                                     let goalMet = dayNum <= dailyGoalMet.count ? dailyGoalMet[dayNum - 1] : false
-                                    
+
                                     if isToday {
                                         Circle()
                                             .stroke(Color(hex: "34C759"), lineWidth: 1)
                                             .frame(width: 30, height: 30)
-                                        
+
                                         if goalMet {
                                             Circle()
                                                 .fill(Color(hex: "00CA48"))
-                                                .frame(width: 24, height: 24)
+                                                .frame(width: 24 * calendarAnimation, height: 24 * calendarAnimation)
                                         }
-                                        
+
                                         Text("\(dayNum)")
                                             .font(.system(size: 14, weight: .medium, design: .monospaced))
                                             .foregroundColor(goalMet ? .black : .white)
                                     } else if isPast && goalMet {
                                         Circle()
                                             .fill(Color(hex: "00CA48"))
-                                            .frame(width: 24, height: 24)
-                                        
+                                            .frame(width: 24 * calendarAnimation, height: 24 * calendarAnimation)
+
                                         Text("\(dayNum)")
                                             .font(.system(size: 14, weight: .medium, design: .monospaced))
                                             .foregroundColor(.black)
@@ -2927,8 +3671,14 @@ struct MonthSummaryView: View {
         .frame(height: 292)
         .background(Color(hex: "121212"))
         .cornerRadius(20)
+        .onAppear {
+            calendarAnimation = 0
+            withAnimation(.easeOut(duration: 0.6)) {
+                calendarAnimation = 1
+            }
+        }
     }
-    
+
     private func isDayPast(_ day: Int) -> Bool {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
@@ -2952,7 +3702,8 @@ struct ProgressCardView: View {
     
     @State private var selectedPage = 0
     @State private var dragOffset: CGFloat = 0
-    
+    @State private var animationProgress: CGFloat = 0
+
     private let chartHeight: CGFloat = 72
     private let totalContentHeight: CGFloat = 92
     private let pageCount = 4
@@ -3016,6 +3767,18 @@ struct ProgressCardView: View {
         .background(Color(hex: "121212"))
         .cornerRadius(20)
         .contentShape(Rectangle())
+        .onAppear {
+            animationProgress = 0
+            withAnimation(.easeOut(duration: 0.8)) {
+                animationProgress = 1
+            }
+        }
+        .onChange(of: selectedPage) { _, _ in
+            animationProgress = 0
+            withAnimation(.easeOut(duration: 0.7)) {
+                animationProgress = 1
+            }
+        }
         .onTapGesture {
             // Tap anywhere on card to go to next page
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
@@ -3037,23 +3800,47 @@ struct ProgressCardView: View {
         )
     }
     
+    /// Filter out noise from hourly step data.
+    /// HealthKit distributes samples across hour boundaries, producing small step counts
+    /// during hours when no real walking occurred (e.g. 50-200 steps at 3 AM).
+    /// Uses a dynamic threshold: any hour with less than 2% of the peak hour is treated as noise.
+    /// Also applies an absolute minimum of 50 steps.
+    private func cleanedHourlySteps(_ raw: [Int]) -> [Int] {
+        let peak = raw.max() ?? 0
+        let dynamicThreshold = max(50, Int(Double(peak) * 0.02))
+        return raw.map { $0 >= dynamicThreshold ? $0 : 0 }
+    }
+
     private var dayProgressContent: some View {
-        let maxSteps = max(hourlyStepsToday.max() ?? 1, hourlyStepsYesterday.max() ?? 1, 1)
+        let cleanToday = cleanedHourlySteps(hourlyStepsToday)
+        let cleanYesterday = cleanedHourlySteps(hourlyStepsYesterday)
+        let maxSteps = max(cleanToday.max() ?? 1, cleanYesterday.max() ?? 1, 1)
         return VStack(spacing: 4) {
             GeometryReader { geo in
                 HStack(alignment: .bottom, spacing: 5) {
                     ForEach(0..<24, id: \.self) { hour in
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 4).fill(Color(hex: "373737")).frame(height: barHeight(steps: hourlyStepsYesterday[hour], max: maxSteps, placeholder: true))
-                            if hourlyStepsToday[hour] > 0 {
-                                RoundedRectangle(cornerRadius: 4).fill(Color(hex: "00CA48")).frame(height: barHeight(steps: hourlyStepsToday[hour], max: maxSteps))
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            ZStack(alignment: .bottom) {
+                                // Yesterday (gray) bar — only show if there were actual steps
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color(hex: "373737"))
+                                    .frame(height: barHeight(steps: cleanYesterday[hour], max: maxSteps, placeholder: true) * animationProgress)
+                                // Today (green) bar — only show for meaningful step counts
+                                if cleanToday[hour] > 0 {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color(hex: "00CA48"))
+                                        .frame(height: barHeight(steps: cleanToday[hour], max: maxSteps) * animationProgress)
+                                }
                             }
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
             }
             .frame(height: chartHeight)
+            .animation(.easeInOut(duration: 0.4), value: hourlyStepsToday)
+            .animation(.easeInOut(duration: 0.4), value: hourlyStepsYesterday)
             HStack {
                 ForEach(["0", "6", "12", "18", "24"], id: \.self) { label in
                     if label != "0" { Spacer() }
@@ -3075,24 +3862,26 @@ struct ProgressCardView: View {
                 let usable = width - inset * 2
                 let stepX = usable / 6
                 let goalY = height - (height * (1.0 / chartMax))
-                
+
                 ZStack(alignment: .topLeading) {
                     ForEach(0..<7, id: \.self) { i in
                         Path { path in let x = inset + CGFloat(i) * stepX; path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: height)) }.stroke(Color(hex: "1A1A1A"), lineWidth: 1)
                     }
                     Path { path in path.move(to: CGPoint(x: 0, y: goalY)); path.addLine(to: CGPoint(x: width, y: goalY)) }.stroke(Color(hex: "34C759").opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    
+
                     let points: [CGPoint] = (0..<7).map { i in CGPoint(x: inset + CGFloat(i) * stepX, y: height - (height * (min(last7DaysProgress[i], chartMax) / chartMax))) }
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom))
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.stroke(Color(hex: "34C759"), lineWidth: 2)
-                    
+                    // Fill area
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom)).opacity(Double(animationProgress))
+                    // Line with trim animation
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.trim(from: 0, to: animationProgress).stroke(Color(hex: "34C759"), lineWidth: 2)
+
                     ForEach(0..<7, id: \.self) { i in
                         let x = inset + CGFloat(i) * stepX
                         let y = height - (height * (min(last7DaysProgress[i], chartMax) / chartMax))
                         ZStack {
                             if i == selectedChartIndex { Circle().stroke(Color.white.opacity(0.4), lineWidth: 2).frame(width: 10, height: 10) }
                             Circle().fill(last7DaysGoalMet[i] ? Color(hex: "34C759") : Color(hex: "B8B8B8")).frame(width: 6, height: 6)
-                        }.position(x: x, y: y)
+                        }.position(x: x, y: y).opacity(Double(animationProgress))
                     }
                 }
             }
@@ -3113,7 +3902,7 @@ struct ProgressCardView: View {
         let chartMax = max(rawMax, 1.0) * 1.3
         let calendar = Calendar.current
         let today = Date()
-        
+
         return VStack(spacing: 4) {
             GeometryReader { geo in
                 let width = geo.size.width; let height = geo.size.height; let inset: CGFloat = 8; let usable = width - inset * 2; let stepX = usable / 11
@@ -3122,15 +3911,15 @@ struct ProgressCardView: View {
                         Path { path in let x = inset + CGFloat(i) * stepX; path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: height)) }.stroke(Color(hex: "1A1A1A"), lineWidth: 1)
                     }
                     let points: [CGPoint] = (0..<12).map { i in CGPoint(x: inset + CGFloat(i) * stepX, y: height - (height * (min(quarterData[i], chartMax) / chartMax))) }
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom))
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.stroke(Color(hex: "34C759"), lineWidth: 2)
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom)).opacity(Double(animationProgress))
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.trim(from: 0, to: animationProgress).stroke(Color(hex: "34C759"), lineWidth: 2)
                     ForEach(0..<12, id: \.self) { i in
                         let x = inset + CGFloat(i) * stepX
                         let y = height - (height * (min(quarterData[i], chartMax) / chartMax))
                         ZStack {
                             if i == 11 { Circle().stroke(Color.white.opacity(0.4), lineWidth: 2).frame(width: 10, height: 10) }
                             Circle().fill(quarterGoalMetData[i] ? Color(hex: "34C759") : Color(hex: "B8B8B8")).frame(width: 6, height: 6)
-                        }.position(x: x, y: y)
+                        }.position(x: x, y: y).opacity(Double(animationProgress))
                     }
                 }
             }.frame(height: chartHeight)
@@ -3155,7 +3944,7 @@ struct ProgressCardView: View {
         let reorderedData: [Double] = (0..<12).map { i in let idx = (currentMonth - 11 + i + 12) % 12; return yearData.count > idx ? yearData[idx] : 0.0 }
         let reorderedGoalMet: [Bool] = (0..<12).map { i in let idx = (currentMonth - 11 + i + 12) % 12; return yearGoalMetData.count > idx ? yearGoalMetData[idx] : false }
         let reorderedLabels: [String] = (0..<12).map { i in let idx = (currentMonth - 11 + i + 12) % 12; return monthLabels[idx] }
-        
+
         return VStack(spacing: 4) {
             GeometryReader { geo in
                 let width = geo.size.width; let height = geo.size.height; let inset: CGFloat = 8; let usable = width - inset * 2; let stepX = usable / 11
@@ -3164,15 +3953,15 @@ struct ProgressCardView: View {
                         Path { path in let x = inset + CGFloat(i) * stepX; path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: height)) }.stroke(Color(hex: "1A1A1A"), lineWidth: 1)
                     }
                     let points: [CGPoint] = (0..<12).map { i in CGPoint(x: inset + CGFloat(i) * stepX, y: height - (height * (min(reorderedData[i], chartMax) / chartMax))) }
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom))
-                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.stroke(Color(hex: "34C759"), lineWidth: 2)
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: CGPoint(x: points[0].x, y: height)); path.addLine(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) }; path.addLine(to: CGPoint(x: points.last!.x, y: height)); path.closeSubpath() }.fill(LinearGradient(colors: [Color(hex: "34C759").opacity(0.25), Color(hex: "34C759").opacity(0)], startPoint: .top, endPoint: .bottom)).opacity(Double(animationProgress))
+                    Path { path in guard !points.isEmpty else { return }; path.move(to: points[0]); for i in 1..<points.count { path.addLine(to: points[i]) } }.trim(from: 0, to: animationProgress).stroke(Color(hex: "34C759"), lineWidth: 2)
                     ForEach(0..<12, id: \.self) { i in
                         let x = inset + CGFloat(i) * stepX
                         let y = height - (height * (min(reorderedData[i], chartMax) / chartMax))
                         ZStack {
                             if i == 11 { Circle().stroke(Color.white.opacity(0.4), lineWidth: 2).frame(width: 10, height: 10) }
                             Circle().fill(reorderedGoalMet[i] ? Color(hex: "34C759") : Color(hex: "B8B8B8")).frame(width: 6, height: 6)
-                        }.position(x: x, y: y)
+                        }.position(x: x, y: y).opacity(Double(animationProgress))
                     }
                 }
             }.frame(height: chartHeight)
@@ -3186,8 +3975,11 @@ struct ProgressCardView: View {
     }
     
     private func barHeight(steps: Int, max: Int, placeholder: Bool = false) -> CGFloat {
-        if steps == 0 { return placeholder ? 4 : 2 }
-        return Swift.max(4, CGFloat(steps) / CGFloat(max) * chartHeight)
+        if steps == 0 { return placeholder ? 1 : 0 }
+        let proportional = CGFloat(steps) / CGFloat(max) * chartHeight
+        // Placeholder (yesterday) bars: min 2px so they're subtly visible
+        // Today bars: min 3px so real activity is always visible
+        return Swift.max(placeholder ? 2 : 3, proportional)
     }
 }
 

@@ -48,7 +48,7 @@ class LeaderboardManager: ObservableObject {
     }
     
     // MARK: - Get date range for period
-    private func getDateRange() -> [String] {
+    func getDateRange() -> [String] {
         let calendar = Calendar.current
         var dates: [String] = []
         
@@ -321,10 +321,22 @@ class LeaderboardManager: ObservableObject {
     @Published var showFriendsOnly: Bool = false
     
     var filteredUsers: [LeaderboardUser] {
+        var result = users
+
+        // Filter by friends
         if showFriendsOnly {
-            return users.filter { friends.contains($0.id) || $0.id == currentUserID }
+            result = result.filter { friends.contains($0.id) || $0.id == currentUserID }
         }
-        return users
+
+        // Hide 0-step users (default ON, always keep current user visible)
+        let hideZero = UserDefaults.standard.object(forKey: "hide_zero_steps_users") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "hide_zero_steps_users")
+        if hideZero {
+            result = result.filter { $0.steps > 0 || $0.id == currentUserID }
+        }
+
+        return result
     }
     
     func loadFriends() {
@@ -362,7 +374,148 @@ class LeaderboardManager: ObservableObject {
     func isFriend(userId: String) -> Bool {
         return friends.contains(userId)
     }
-    
+
+    // MARK: - Friend Invite Link (Bidirectional)
+
+    @Published var friendInviteCode: String? = nil
+
+    private let friendInviteCharset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+    /// Generate or retrieve the current user's friend invite code.
+    /// Code is cached in UserDefaults and Firestore.
+    /// Cache key scoped to the current user
+    private var friendInviteCacheKey: String {
+        "friendInviteCode_\(currentUserID)"
+    }
+
+    func generateFriendInviteCode(completion: @escaping (String) -> Void) {
+        guard let currentUser = Auth.auth().currentUser, !currentUser.isAnonymous else {
+            completion("")
+            return
+        }
+
+        // Return in-memory cache if it matches the current user
+        if let cached = friendInviteCode, !cached.isEmpty {
+            completion(cached)
+            return
+        }
+
+        // Check UserDefaults cache scoped to this user
+        if let savedCode = UserDefaults.standard.string(forKey: friendInviteCacheKey), !savedCode.isEmpty {
+            friendInviteCode = savedCode
+            completion(savedCode)
+            return
+        }
+
+        // Check Firestore for an existing code for this user
+        db.collection("friendInvites")
+            .whereField("creatorId", isEqualTo: currentUser.uid)
+            .limit(to: 1)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self else { return }
+
+                if let doc = snapshot?.documents.first {
+                    // Found existing code in Firestore
+                    let code = doc.documentID
+                    self.friendInviteCode = code
+                    UserDefaults.standard.set(code, forKey: self.friendInviteCacheKey)
+                    completion(code)
+                    return
+                }
+
+                // Generate new 6-char code
+                let code = String((0..<6).map { _ in self.friendInviteCharset.randomElement()! })
+
+                let data: [String: Any] = [
+                    "creatorId": currentUser.uid,
+                    "createdAt": FieldValue.serverTimestamp()
+                ]
+
+                self.db.collection("friendInvites").document(code).setData(data) { error in
+                    self.friendInviteCode = code
+                    UserDefaults.standard.set(code, forKey: self.friendInviteCacheKey)
+                    completion(code)
+                }
+            }
+    }
+
+    /// Clear cached invite code (call on logout/account switch)
+    func clearFriendInviteCache() {
+        friendInviteCode = nil
+        // Clean up legacy global key if it exists
+        UserDefaults.standard.removeObject(forKey: "friendInviteCode")
+    }
+
+    /// Accept a friend invite: adds both users to each other's friend list.
+    func acceptFriendInvite(code: String, completion: @escaping (Result<String, Error>) -> Void) {
+        guard let currentUser = Auth.auth().currentUser, !currentUser.isAnonymous else {
+            completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])))
+            return
+        }
+
+        let cleanCode = code.trimmingCharacters(in: .whitespaces).uppercased()
+
+        db.collection("friendInvites").document(cleanCode).getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let data = snapshot?.data(), let creatorId = data["creatorId"] as? String else {
+                completion(.failure(NSError(domain: "", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid invite code"])))
+                return
+            }
+
+            if creatorId == currentUser.uid {
+                completion(.failure(NSError(domain: "", code: -3, userInfo: [NSLocalizedDescriptionKey: "Cannot add yourself as a friend"])))
+                return
+            }
+
+            // Check if already friends
+            if self.friends.contains(creatorId) {
+                completion(.success("Already friends"))
+                return
+            }
+
+            // Add creator to current user's friends
+            self.addFriend(userId: creatorId)
+
+            // Add current user to creator's friends (bidirectional)
+            self.db.collection("users").document(creatorId).setData([
+                "friends": FieldValue.arrayUnion([currentUser.uid])
+            ], merge: true)
+
+            // Get creator's name for confirmation
+            self.db.collection("leaderboard").document(creatorId).getDocument { snapshot, _ in
+                let name = snapshot?.data()?["name"] as? String ?? "User"
+                completion(.success(name))
+            }
+        }
+    }
+
+    /// Get share text with friend invite deep link.
+    static let webDomain = "step1-a9d46.web.app"
+
+    func getFriendInviteShareText(completion: @escaping (String) -> Void) {
+        guard let currentUser = Auth.auth().currentUser, !currentUser.isAnonymous else {
+            completion("Join me on StePlease! 🚶‍♂️\n\nhttps://apps.apple.com/rs/app/steplease-step-tracker/id6758054873")
+            return
+        }
+        generateFriendInviteCode { code in
+            let link = "https://\(LeaderboardManager.webDomain)/friend/\(code)"
+            let text = "Add me as a friend on StePlease! 🚶‍♂️\n\n\(link)"
+            completion(text)
+        }
+    }
+
+    func getFriendInviteShareItems(completion: @escaping ([Any]) -> Void) {
+        getFriendInviteShareText { text in
+            DispatchQueue.main.async { completion([text]) }
+        }
+    }
+
     // MARK: - Generate Demo Users (for testing)
     func generateDemoUsers() {
         let demoNames = [

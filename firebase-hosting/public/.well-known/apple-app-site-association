@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "64DW2BWM26.alex.Step1"
+        ],
+        "components": [
+          {
+            "/": "/join/*",
+            "comment": "Group invite links"
+          },
+          {
+            "/": "/friend/*",
+            "comment": "Friend invite links"
+          }
+        ]
+      }
+    ]
+  }
+}

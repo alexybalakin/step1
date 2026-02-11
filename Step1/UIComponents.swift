@@ -814,7 +814,9 @@ struct SettingsView: View {
     @State private var useMetric = true
     @State private var weekStartsMonday = true
     @State private var showShareSheet = false
-    
+    @State private var hideZeroStepsUsers = true
+    @State private var hideLeaderboard = false
+
     let appStoreLink = "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     
     var body: some View {
@@ -864,7 +866,73 @@ struct SettingsView: View {
                         .cornerRadius(12)
                     }
                     .padding(.horizontal, 20)
-                    
+
+                    // Leaderboard
+                    VStack(spacing: 0) {
+                        SettingsSectionHeader(title: "LEADERBOARD")
+
+                        VStack(spacing: 0) {
+                            // Hide 0 steps users
+                            HStack {
+                                Image(systemName: "eye.slash.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "8E8E93"))
+                                    .cornerRadius(6)
+
+                                Text("Hide 0 Steps Users")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                Toggle("", isOn: $hideZeroStepsUsers)
+                                    .labelsHidden()
+                                    .tint(Color(hex: "00CA48"))
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+
+                            Divider()
+                                .background(Color(hex: "3A3A3C"))
+                                .padding(.leading, 52)
+
+                            // Hide Leaderboard
+                            HStack {
+                                Image(systemName: "chart.bar.xaxis")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(hex: "FF3B30"))
+                                    .cornerRadius(6)
+
+                                Text("Hide Leaderboard")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                Toggle("", isOn: $hideLeaderboard)
+                                    .labelsHidden()
+                                    .tint(Color(hex: "00CA48"))
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+                        .background(Color(hex: "1A1A1C"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                    .onChange(of: hideZeroStepsUsers) { _, value in
+                        UserDefaults.standard.set(value, forKey: "hide_zero_steps_users")
+                    }
+                    .onChange(of: hideLeaderboard) { _, value in
+                        UserDefaults.standard.set(value, forKey: "hide_leaderboard")
+                    }
+
                     // General
                     VStack(spacing: 0) {
                         SettingsSectionHeader(title: "GENERAL")
@@ -1236,6 +1304,8 @@ struct SettingsView: View {
             if UserDefaults.standard.object(forKey: "week_starts_monday") != nil {
                 weekStartsMonday = UserDefaults.standard.bool(forKey: "week_starts_monday")
             }
+            hideZeroStepsUsers = UserDefaults.standard.object(forKey: "hide_zero_steps_users") == nil ? true : UserDefaults.standard.bool(forKey: "hide_zero_steps_users")
+            hideLeaderboard = UserDefaults.standard.bool(forKey: "hide_leaderboard")
         }
         .sheet(isPresented: $showProfile) {
             ProfileView(authManager: authManager, healthManager: healthManager)
@@ -4420,6 +4490,90 @@ struct LeaderboardLockedView: View {
     }
 }
 
+// MARK: - Leaderboard Hidden View
+struct LeaderboardHiddenView: View {
+    var body: some View {
+        ZStack {
+            Color(hex: "0A0A0A").ignoresSafeArea()
+            VStack(spacing: 16) {
+                Spacer()
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                Text("Leaderboard is Hidden")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                Text("You can enable it in Settings")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(hex: "8E8E93"))
+                Spacer()
+            }
+        }
+    }
+}
+
+// MARK: - Friends Empty State View
+struct FriendsEmptyStateView: View {
+    @ObservedObject var leaderboardManager: LeaderboardManager
+    @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
+    @State private var isLoading = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "person.2.slash")
+                .font(.system(size: 48))
+                .foregroundColor(Color(hex: "8E8E93"))
+            Text("No friends yet")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+            Text("Invite friends to compete together")
+                .font(.system(size: 15))
+                .foregroundColor(Color(hex: "8E8E93"))
+            Button(action: {
+                guard !isLoading else { return }
+                isLoading = true
+                leaderboardManager.getFriendInviteShareItems { items in
+                    shareItems = items
+                    isLoading = false
+                    if !items.isEmpty {
+                        showShareSheet = true
+                    }
+                }
+            }) {
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(width: 16, height: 16)
+                    } else {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    Text("Invite Friend")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(Color(hex: "34C759"))
+                .cornerRadius(12)
+            }
+            .padding(.top, 8)
+            Spacer()
+            Spacer()
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems)
+        }
+        .onAppear {
+            // Pre-generate invite code so it's cached when button is tapped
+            leaderboardManager.generateFriendInviteCode { _ in }
+        }
+    }
+}
+
 // MARK: - Top Leaderboard View
 struct TopLeaderboardView: View {
     @ObservedObject var leaderboardManager: LeaderboardManager
@@ -4428,7 +4582,7 @@ struct TopLeaderboardView: View {
     @State private var selectedUser: LeaderboardUser?
     @State private var showMyProfile = false
     @State private var showProfile = false
-    @State private var selectedTab: GroupTab = .all
+    @State private var selectedTab: GroupTab = .friends
     @State private var showGroupDetail: CustomGroup? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var showMenu = false
@@ -4619,58 +4773,58 @@ struct TopLeaderboardView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 
-                // Date Header (sticky, 64px height)
+                // Date Header (72px height, chevrons centered around date)
                 HStack(spacing: 0) {
-                    // Left dot in 36x36 tappable container
-                    Button(action: { changeDate(by: -1) }) {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 6, height: 6)
-                    }
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-                    .padding(.leading, 0)
-                    
                     Spacer()
-                    
-                    // Date text - "Today" white, others grey
-                    Text(dateString)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundColor(isToday ? .white : Color(hex: "8E8E93"))
-                    
-                    // Today button (only for Day period when not today)
-                    if leaderboardManager.selectedPeriod == 0 && !isToday {
-                        Button(action: {
-                            withAnimation {
-                                leaderboardManager.selectedDate = Date()
-                                leaderboardManager.refresh()
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text("Today")
-                                    .font(.system(size: 14, weight: .regular, design: .monospaced))
-                            }
-                            .foregroundColor(.white)
+
+                    HStack(spacing: 16) {
+                        // Left chevron
+                        Button(action: { changeDate(by: -1) }) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white)
                         }
-                        .padding(.leading, 12)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+
+                        // Date text + optional Today button
+                        HStack(spacing: 8) {
+                            Text(dateString)
+                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .foregroundColor(isToday ? .white : Color(hex: "8E8E93"))
+
+                            if leaderboardManager.selectedPeriod == 0 && !isToday {
+                                Button(action: {
+                                    withAnimation {
+                                        leaderboardManager.selectedDate = Date()
+                                        leaderboardManager.refresh()
+                                    }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.counterclockwise")
+                                            .font(.system(size: 10, weight: .medium))
+                                        Text("Today")
+                                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                    }
+                                    .foregroundColor(.white)
+                                }
+                            }
+                        }
+
+                        // Right chevron
+                        Button(action: { if canGoForward { changeDate(by: 1) } }) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(canGoForward ? .white : Color(hex: "3A3A3C"))
+                        }
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                        .disabled(!canGoForward)
                     }
-                    
+
                     Spacer()
-                    
-                    // Right dot in 36x36 tappable container
-                    Button(action: { if canGoForward { changeDate(by: 1) } }) {
-                        Circle()
-                            .fill(canGoForward ? Color.white : Color(hex: "3A3A3C"))
-                            .frame(width: 6, height: 6)
-                    }
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-                    .disabled(!canGoForward)
-                    .padding(.trailing, 0)
                 }
-                .frame(height: 64)
+                .frame(height: 72)
                 .padding(.horizontal, 0)
                 .background(Color(hex: "0A0A0A"))
                 .zIndex(1)
@@ -4692,23 +4846,63 @@ struct TopLeaderboardView: View {
                         }
                 )
                 
-                // Leaderboard List
+                // Group Tab Selector
+                GroupTabSelector(
+                    leaderboardManager: leaderboardManager,
+                    groupManager: groupManager,
+                    selectedTab: $selectedTab
+                )
+
+                // Leaderboard Content (based on selected tab)
                 if leaderboardManager.isLoading {
                     Spacer()
                     ProgressView().tint(.white)
                     Spacer()
-                } else if leaderboardManager.users.isEmpty {
-                    Spacer()
-                    Text("No users yet")
-                        .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
                 } else {
-                    NewLeaderboardList(
-                        leaderboardManager: leaderboardManager,
-                        onUserTap: { user in selectedUser = user },
-                        onSwipeDate: { value in changeDate(by: value) }
-                    )
+                    switch selectedTab {
+                    case .friends:
+                        // Show empty state if no friends (exclude self)
+                        let realFriends = leaderboardManager.friends.filter { $0 != leaderboardManager.currentUserID }
+                        if realFriends.isEmpty {
+                            FriendsEmptyStateView(leaderboardManager: leaderboardManager)
+                        } else {
+                            leaderboardTableHeader
+                            NewLeaderboardList(
+                                leaderboardManager: leaderboardManager,
+                                onUserTap: { user in selectedUser = user },
+                                onSwipeDate: { value in changeDate(by: value) }
+                            )
+                        }
+                    case .all:
+                        if leaderboardManager.filteredUsers.isEmpty {
+                            Spacer()
+                            Text("No users yet")
+                                .font(.system(size: 17))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                            Spacer()
+                        } else {
+                            leaderboardTableHeader
+                            NewLeaderboardList(
+                                leaderboardManager: leaderboardManager,
+                                onUserTap: { user in selectedUser = user },
+                                onSwipeDate: { value in changeDate(by: value) }
+                            )
+                        }
+                    case .group(let groupId):
+                        if groupManager.userGroups.contains(where: { $0.id == groupId }) {
+                            GroupLeaderboardView(
+                                groupId: groupId,
+                                groupManager: groupManager,
+                                leaderboardManager: leaderboardManager
+                            )
+                        } else {
+                            Spacer()
+                            Text("Group not found")
+                                .font(.system(size: 17))
+                                .foregroundColor(Color(hex: "8E8E93"))
+                            Spacer()
+                        }
+                    }
                 }
             }
             
@@ -4721,9 +4915,9 @@ struct TopLeaderboardView: View {
                     endPoint: .bottom
                 )
                 .frame(height: 100)
-                .allowsHitTesting(false)
             }
             .ignoresSafeArea()
+            .allowsHitTesting(false)
             
             // Menu Overlay
             if showMenu {
@@ -4809,8 +5003,43 @@ struct TopLeaderboardView: View {
             // Steps banner share - TODO: implement proper banner generation
             ShareSheet(items: ["I walked \(leaderboardManager.users.first(where: { $0.id == leaderboardManager.currentUserID })?.steps.formatted() ?? "0") steps today! 🚶‍♂️ Track your steps with StePlease! \(appStoreLink)"])
         }
+        .onAppear {
+            // Sync showFriendsOnly with default tab (.friends)
+            if selectedTab == .friends {
+                leaderboardManager.showFriendsOnly = true
+            }
+        }
     }
-    
+
+    var leaderboardTableHeader: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("#")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "636366"))
+                    .frame(width: 40, alignment: .center)
+
+                Text("User")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "636366"))
+
+                Spacer()
+
+                Text("Steps")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "636366"))
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            Rectangle()
+                .fill(Color(hex: "1A1A1A"))
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+        }
+    }
+
     func changeDate(by value: Int) {
         let calendar = Calendar.current
         let newDate: Date
@@ -4878,6 +5107,7 @@ struct NewLeaderboardList: View {
                             )
                         }
                     }
+                    .padding(.top, 8)
                     .padding(.bottom, 160)
                 }
                 .coordinateSpace(name: "leaderboardScroll")
@@ -4911,7 +5141,6 @@ struct NewLeaderboardList: View {
                             showDivider: false
                         )
                         .onTapGesture { onUserTap?(currentUser) }
-                        .frame(height: 52)
                         .background(Color(hex: "101010"))
                         .padding(.bottom, 80) // Moved down 8px more (was 88, now 80 = closer to tab bar)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -4990,8 +5219,8 @@ struct NewLeaderboardRow: View {
                     .foregroundColor(.white)
             }
             .padding(.horizontal, 16)
-            .frame(height: 52)
-            
+            .padding(.vertical, 16)
+
             // Bottom divider - full width with 16px padding on both sides
             if showDivider {
                 Rectangle()

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add Friend - StePlease</title>
+  <style>
+    body { background: #0A0A0A; color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 60px 20px; }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    p { color: #8E8E93; font-size: 16px; }
+    .btn { display: inline-block; background: #34C759; color: white; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 17px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Add Friend on StePlease</h1>
+  <p>Opening the app...</p>
+  <a class="btn" id="storeLink" href="https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873">Download StePlease</a>
+  <script>
+    var path = window.location.pathname;
+    var code = path.split('/').pop();
+    if (code) {
+      window.location.href = 'steplease://friend/' + code;
+    }
+  </script>
+</body>
+</html>

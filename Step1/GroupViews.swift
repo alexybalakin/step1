@@ -8,33 +8,21 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Group Tab Selector (Scrollable: ALL | FRIENDS | Groups... | +)
+// MARK: - Group Tab Selector (Scrollable: FRIENDS | ALL STARS | Groups... | +)
 struct GroupTabSelector: View {
     @ObservedObject var leaderboardManager: LeaderboardManager
     @ObservedObject var groupManager: GroupManager
     @Binding var selectedTab: GroupTab
     @State private var showCreateGroup = false
     @State private var showJoinGroup = false
-    
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                // ALL tab
+            HStack(spacing: 8) {
+                // FRIENDS tab (first)
                 GroupTabButton(
-                    title: "ALL",
-                    count: leaderboardManager.users.count,
-                    isSelected: selectedTab == .all
-                ) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedTab = .all
-                        leaderboardManager.showFriendsOnly = false
-                    }
-                }
-                
-                // FRIENDS tab
-                GroupTabButton(
-                    title: "FRIENDS",
-                    count: leaderboardManager.friends.count,
+                    title: "Friends",
+                    iconSystemName: "person.2.fill",
                     isSelected: selectedTab == .friends
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -42,12 +30,24 @@ struct GroupTabSelector: View {
                         leaderboardManager.showFriendsOnly = true
                     }
                 }
-                
+
+                // ALL STARS tab (second)
+                GroupTabButton(
+                    title: "All Stars",
+                    iconSystemName: "star.fill",
+                    isSelected: selectedTab == .all
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedTab = .all
+                        leaderboardManager.showFriendsOnly = false
+                    }
+                }
+
                 // Custom groups
                 ForEach(groupManager.userGroups) { group in
                     GroupTabButton(
-                        title: group.name.uppercased(),
-                        count: group.memberCount,
+                        title: group.name,
+                        iconLetter: String(group.name.prefix(1)).uppercased(),
                         isSelected: selectedTab == .group(group.id)
                     ) {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -56,26 +56,38 @@ struct GroupTabSelector: View {
                         }
                     }
                 }
-                
-                // Add group button (+)
+
+                // New group button (+) — same style as GroupTabButton
                 Button(action: {
                     showCreateGroup = true
                 }) {
-                    Text("+")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                        .frame(width: 40, height: 32)
-                        .background(Color.clear)
-                        .cornerRadius(8)
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: "3A3A3C"))
+                                .frame(width: 24, height: 24)
+
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+
+                        Text("New")
+                            .font(.system(size: 14, weight: .medium))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color(hex: "1A1A1A"))
+                    )
                 }
-                .padding(.leading, 4)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 0)
+            .padding(.horizontal, 16)
         }
-        .background(Color(hex: "1A1A1C"))
-        .cornerRadius(8)
-        .padding(.horizontal, 20)
+        .frame(height: 44)
         .sheet(isPresented: $showCreateGroup) {
             CreateGroupSheet(groupManager: groupManager, showJoinGroup: $showJoinGroup)
         }
@@ -88,25 +100,46 @@ struct GroupTabSelector: View {
 // MARK: - Group Tab Button
 struct GroupTabButton: View {
     let title: String
-    let count: Int
+    var iconSystemName: String? = nil
+    var iconLetter: String? = nil
     let isSelected: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
+                // Icon circle (24x24)
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? Color(hex: "00A33A") : Color(hex: "3A3A3C"))
+                        .frame(width: 24, height: 24)
+
+                    if let systemName = iconSystemName {
+                        Image(systemName: systemName)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    } else if let letter = iconLetter {
+                        Text(letter)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
-                Text("(\(count))")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color(hex: "8E8E93"))
             }
-            .foregroundColor(isSelected ? .white : Color(hex: "8E8E93"))
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .background(isSelected ? Color(hex: "3A3A3C") : Color.clear)
-            .cornerRadius(8)
+            .foregroundColor(isSelected ? Color(hex: "00A33A") : .white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 22)
+                    .fill(isSelected ? Color(hex: "09200D") : Color(hex: "1A1A1A"))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(isSelected ? Color(hex: "00A33A") : Color.clear, lineWidth: 1)
+            )
         }
     }
 }
@@ -298,9 +331,7 @@ struct CreateGroupSheet: View {
             }
             .sheet(isPresented: $showShareSheet) {
                 if let group = createdGroup {
-                    GroupShareSheet(items: [
-                        groupManager.getShareText(for: group)
-                    ])
+                    GroupShareSheet(items: groupManager.getShareItems(for: group))
                 }
             }
         }
@@ -478,8 +509,8 @@ struct GroupDetailsSheet: View {
     
     @State private var showShareSheet = false
     @State private var showDeleteConfirmation = false
+    @State private var showRenameSheet = false
     @State private var isDeleting = false
-    @State private var linkCopied = false
     
     var body: some View {
         NavigationView {
@@ -501,13 +532,30 @@ struct GroupDetailsSheet: View {
                         .padding(.top, 32)
                         
                         VStack(spacing: 8) {
-                            Text(group.name)
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.white)
-                            
+                            HStack(spacing: 6) {
+                                Text(group.name)
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundColor(.white)
+
+                                if group.isCreator {
+                                    Button(action: { showRenameSheet = true }) {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(Color(hex: "8E8E93"))
+                                    }
+                                }
+                            }
+
                             Text("\(group.memberCount) members")
                                 .font(.system(size: 15))
                                 .foregroundColor(Color(hex: "8E8E93"))
+
+                            // Admin name
+                            if let admin = leaderboardManager.users.first(where: { $0.id == group.adminId }) {
+                                Text("Admin: \(admin.name)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "8E8E93"))
+                            }
                         }
                         
                         if !group.description.isEmpty {
@@ -517,50 +565,6 @@ struct GroupDetailsSheet: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
                         }
-                        
-                        // Share link section
-                        VStack(spacing: 12) {
-                            Text("Invite Friends")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(hex: "8E8E93"))
-                            
-                            // Invite code display
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Invite Code")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "8E8E93"))
-                                    Text(group.joinCode)
-                                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white)
-                                        .tracking(3)
-                                }
-                                
-                                Spacer()
-                                
-                                Button(action: {
-                                    UIPasteboard.general.string = group.joinCode
-                                    linkCopied = true
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                        linkCopied = false
-                                    }
-                                }) {
-                                    Text(linkCopied ? "Copied!" : "Copy")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundColor(linkCopied ? .white : Color(hex: "34C759"))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(linkCopied ? Color(hex: "34C759") : Color(hex: "34C759").opacity(0.15))
-                                        .cornerRadius(8)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .background(Color(hex: "1A1A1C"))
-                            .cornerRadius(12)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
                         
                         // Share button
                         Button(action: { showShareSheet = true }) {
@@ -628,9 +632,7 @@ struct GroupDetailsSheet: View {
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                GroupShareSheet(items: [
-                    groupManager.getShareText(for: group)
-                ])
+                GroupShareSheet(items: groupManager.getShareItems(for: group))
             }
             .alert("Delete Group?", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
@@ -639,6 +641,11 @@ struct GroupDetailsSheet: View {
                 }
             } message: {
                 Text("Are you sure you want to delete '\(group.name)'? This will remove all members and cannot be undone.")
+            }
+            .sheet(isPresented: $showRenameSheet) {
+                RenameGroupSheet(group: group, groupManager: groupManager) {
+                    dismiss()
+                }
             }
         }
     }
@@ -650,6 +657,97 @@ struct GroupDetailsSheet: View {
             isDeleting = false
             
             if error == nil {
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Rename Group Sheet
+struct RenameGroupSheet: View {
+    let group: CustomGroup
+    @ObservedObject var groupManager: GroupManager
+    var onRenamed: (() -> Void)?
+    @Environment(\.dismiss) var dismiss
+
+    @State private var newName: String = ""
+    @State private var isSaving = false
+    @State private var errorMessage = ""
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(hex: "0A0A0A").ignoresSafeArea()
+
+                VStack(spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("New Name")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color(hex: "8E8E93"))
+
+                        TextField("", text: $newName, prompt: Text(group.name).foregroundColor(Color(hex: "8E8E93")))
+                            .font(.system(size: 17))
+                            .foregroundColor(.white)
+                            .padding(16)
+                            .background(Color(hex: "1A1A1C"))
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 32)
+
+                    if !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.system(size: 14))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 20)
+                    }
+
+                    Button(action: saveRename) {
+                        ZStack {
+                            if isSaving {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("Save")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(newName.isEmpty ? Color(hex: "3A3A3C") : Color(hex: "34C759"))
+                        .cornerRadius(12)
+                    }
+                    .disabled(newName.isEmpty || isSaving)
+                    .padding(.horizontal, 20)
+
+                    Spacer()
+                }
+            }
+            .navigationTitle("Rename Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(Color(hex: "34C759"))
+                }
+            }
+        }
+        .onAppear {
+            newName = group.name
+        }
+    }
+
+    private func saveRename() {
+        guard !newName.isEmpty else { return }
+        isSaving = true
+        errorMessage = ""
+
+        groupManager.updateGroup(groupId: group.id, name: newName, description: group.description) { error in
+            isSaving = false
+            if let error = error {
+                errorMessage = error.localizedDescription
+            } else {
+                onRenamed?()
                 dismiss()
             }
         }
@@ -669,112 +767,170 @@ struct GroupShareSheet: UIViewControllerRepresentable {
 
 // MARK: - Group Leaderboard View
 struct GroupLeaderboardView: View {
-    let group: CustomGroup
+    let groupId: String
     @ObservedObject var groupManager: GroupManager
     @ObservedObject var leaderboardManager: LeaderboardManager
     var onUserTap: ((LeaderboardUser) -> Void)?
-    var onGroupTap: (() -> Void)?
-    
+
     @State private var members: [LeaderboardUser] = []
     @State private var isLoading = true
-    
+    @State private var showGroupDetail = false
+    @State private var showShareSheet = false
+    @State private var showDeleteConfirmation = false
+    @State private var showRenameSheet = false
+
+    /// Always read the latest group data from groupManager
+    private var group: CustomGroup? {
+        groupManager.userGroups.first(where: { $0.id == groupId })
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        if let group = group {
             if isLoading {
                 VStack {
                     Spacer()
                     ProgressView().tint(.white)
                     Spacer()
                 }
-            } else if members.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("No members yet")
-                        .font(.system(size: 17))
-                        .foregroundColor(Color(hex: "8E8E93"))
-                    Spacer()
-                }
+                .onAppear { loadMembers() }
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Group info card (tappable)
-                        Button(action: { onGroupTap?() }) {
+                        // Group info card (tappable → opens details)
+                        Button(action: { showGroupDetail = true }) {
                             HStack(spacing: 12) {
                                 ZStack {
                                     Circle()
-                                        .fill(Color(hex: "34C759").opacity(0.2))
-                                        .frame(width: 44, height: 44)
-                                    
+                                        .fill(Color(hex: "00A33A").opacity(0.15))
+                                        .frame(width: 40, height: 40)
+
                                     Text(String(group.name.prefix(1).uppercased()))
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundColor(Color(hex: "34C759"))
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(Color(hex: "00A33A"))
                                 }
-                                
+
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(group.name)
-                                        .font(.system(size: 17, weight: .semibold))
+                                        .font(.system(size: 16, weight: .semibold))
                                         .foregroundColor(.white)
-                                    
+
                                     Text("\(group.memberCount) members")
-                                        .font(.system(size: 13))
+                                        .font(.system(size: 12))
                                         .foregroundColor(Color(hex: "8E8E93"))
                                 }
-                                
+
                                 Spacer()
-                                
+
+                                // Invite button (minimal)
+                                Button(action: { showShareSheet = true }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "person.badge.plus")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Invite")
+                                            .font(.system(size: 13, weight: .medium))
+                                    }
+                                    .foregroundColor(Color(hex: "00A33A"))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(Color(hex: "09200D"))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(Color(hex: "00A33A").opacity(0.3), lineWidth: 1)
+                                    )
+                                }
+
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(Color(hex: "3A3A3C"))
                             }
-                            .padding(16)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
                             .background(Color(hex: "1A1A1C"))
                             .cornerRadius(12)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .padding(.bottom, 12)
-                        
-                        // Members list
-                        ForEach(Array(members.enumerated()), id: \.element.id) { index, user in
-                            LeaderboardRow(
-                                rank: index + 1,
-                                user: user,
-                                isCurrentUser: user.id == leaderboardManager.currentUserID
-                            )
-                            .onTapGesture {
-                                onUserTap?(user)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+
+                        // Table header
+                        VStack(spacing: 0) {
+                            HStack(spacing: 12) {
+                                Text("#")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color(hex: "636366"))
+                                    .frame(width: 40, alignment: .center)
+
+                                Text("User")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color(hex: "636366"))
+
+                                Spacer()
+
+                                Text("Steps")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color(hex: "636366"))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+
+                            Rectangle()
+                                .fill(Color(hex: "1A1A1A"))
+                                .frame(height: 1)
+                                .padding(.horizontal, 16)
+                        }
+
+                        // Members list (same style as other leaderboard lists)
+                        if members.isEmpty {
+                            VStack(spacing: 12) {
+                                Spacer().frame(height: 40)
+                                Text("No members yet")
+                                    .font(.system(size: 17))
+                                    .foregroundColor(Color(hex: "8E8E93"))
+                                Text("Invite friends to join this group")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(hex: "636366"))
+                            }
+                        } else {
+                            ForEach(Array(members.enumerated()), id: \.element.id) { index, user in
+                                NewLeaderboardRow(
+                                    rank: index + 1,
+                                    user: user,
+                                    isCurrentUser: user.id == leaderboardManager.currentUserID,
+                                    showDivider: index < members.count - 1
+                                )
+                                .onTapGesture { onUserTap?(user) }
                             }
                         }
                     }
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 160)
+                }
+                .sheet(isPresented: $showGroupDetail) {
+                    GroupDetailsSheet(
+                        group: group,
+                        groupManager: groupManager,
+                        leaderboardManager: leaderboardManager
+                    )
+                }
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(items: groupManager.getShareItems(for: group))
+                }
+                .onChange(of: leaderboardManager.selectedDate) { _, _ in
+                    loadMembers()
+                }
+                .onChange(of: leaderboardManager.selectedPeriod) { _, _ in
+                    loadMembers()
                 }
             }
-            
-            // Share button
-            Button(action: { onGroupTap?() }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Invite")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(hex: "34C759"))
-                .cornerRadius(24)
-                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
-            }
-            .padding(.trailing, 20)
-            .padding(.bottom, 100)
-        }
-        .onAppear {
-            loadMembers()
         }
     }
-    
+
     func loadMembers() {
-        groupManager.getGroupMembers(groupId: group.id) { users in
+        let dates = leaderboardManager.getDateRange()
+        groupManager.getGroupMembers(groupId: groupId, dates: dates) { users in
             members = users.sorted { $0.steps > $1.steps }
             isLoading = false
         }

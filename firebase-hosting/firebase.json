@@ -1,0 +1,26 @@
+{
+  "hosting": {
+    "public": "public",
+    "rewrites": [
+      {
+        "source": "/join/**",
+        "destination": "/join/index.html"
+      },
+      {
+        "source": "/friend/**",
+        "destination": "/friend/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/.well-known/apple-app-site-association",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -128,7 +128,15 @@ class GroupManager: ObservableObject {
                 completion(.failure(error))
                 return
             }
-            
+
+            // Write invite code to public lookup collection
+            self?.db.collection("groupInvites").document(inviteCode).setData([
+                "groupId": groupId,
+                "groupName": name,
+                "adminId": self?.currentUserID ?? "",
+                "createdAt": FieldValue.serverTimestamp()
+            ])
+
             // Add group to user's groups list
             self?.db.collection("users").document(self?.currentUserID ?? "").updateData([
                 "groups": FieldValue.arrayUnion([groupId])
@@ -154,58 +162,96 @@ class GroupManager: ObservableObject {
             completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not logged in"])))
             return
         }
-        
-        db.collection("groups")
-            .whereField("inviteCode", isEqualTo: inviteCode.uppercased())
-            .getDocuments { [weak self] snapshot, error in
-                guard let self = self else { return }
-                
+
+        let cleanCode = inviteCode.trimmingCharacters(in: .whitespaces).uppercased()
+
+        // Step 1: Look up invite code in public groupInvites collection
+        db.collection("groupInvites").document(cleanCode).getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                // Fallback: try direct query on groups collection
+                self.joinGroupByQuery(inviteCode: cleanCode, completion: completion)
+                return
+            }
+
+            if let data = snapshot?.data(), let groupId = data["groupId"] as? String {
+                // Found via lookup — join directly by groupId
+                self.joinGroupById(groupId: groupId, inviteCode: cleanCode, completion: completion)
+            } else {
+                // Not found in lookup — fallback to query
+                self.joinGroupByQuery(inviteCode: cleanCode, completion: completion)
+            }
+        }
+    }
+
+    private func joinGroupById(groupId: String, inviteCode: String, completion: @escaping (Result<CustomGroup, Error>) -> Void) {
+        db.collection("groups").document(groupId).getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let data = snapshot?.data() else {
+                completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Group not found"])))
+                return
+            }
+
+            let members = data["members"] as? [String] ?? []
+            if members.contains(self.currentUserID) {
+                completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Already a member"])))
+                return
+            }
+
+            // Add user to group
+            self.db.collection("groups").document(groupId).updateData([
+                "members": FieldValue.arrayUnion([self.currentUserID])
+            ]) { error in
                 if let error = error {
                     completion(.failure(error))
                     return
                 }
-                
+
+                // Add group to user's list
+                self.db.collection("users").document(self.currentUserID).updateData([
+                    "groups": FieldValue.arrayUnion([groupId])
+                ])
+
+                let group = CustomGroup(
+                    id: groupId,
+                    name: data["name"] as? String ?? "",
+                    description: data["description"] as? String ?? "",
+                    adminId: data["adminId"] as? String ?? "",
+                    inviteCode: data["inviteCode"] as? String ?? "",
+                    members: members + [self.currentUserID],
+                    createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                )
+
+                completion(.success(group))
+            }
+        }
+    }
+
+    private func joinGroupByQuery(inviteCode: String, completion: @escaping (Result<CustomGroup, Error>) -> Void) {
+        db.collection("groups")
+            .whereField("inviteCode", isEqualTo: inviteCode)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self else { return }
+
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
                 guard let doc = snapshot?.documents.first else {
-                    completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Group not found"])))
+                    completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Group not found. Check the code and try again."])))
                     return
                 }
-                
+
                 let groupId = doc.documentID
-                let data = doc.data()
-                
-                // Check if already a member
-                let members = data["members"] as? [String] ?? []
-                if members.contains(self.currentUserID) {
-                    completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Already a member"])))
-                    return
-                }
-                
-                // Add user to group
-                self.db.collection("groups").document(groupId).updateData([
-                    "members": FieldValue.arrayUnion([self.currentUserID])
-                ]) { error in
-                    if let error = error {
-                        completion(.failure(error))
-                        return
-                    }
-                    
-                    // Add group to user's list
-                    self.db.collection("users").document(self.currentUserID).updateData([
-                        "groups": FieldValue.arrayUnion([groupId])
-                    ])
-                    
-                    let group = CustomGroup(
-                        id: groupId,
-                        name: data["name"] as? String ?? "",
-                        description: data["description"] as? String ?? "",
-                        adminId: data["adminId"] as? String ?? "",
-                        inviteCode: data["inviteCode"] as? String ?? "",
-                        members: members + [self.currentUserID],
-                        createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                    )
-                    
-                    completion(.success(group))
-                }
+                self.joinGroupById(groupId: groupId, inviteCode: inviteCode, completion: completion)
             }
     }
     
@@ -270,31 +316,86 @@ class GroupManager: ObservableObject {
     }
     
     // MARK: - Get Group Members with Details
-    func getGroupMembers(groupId: String, completion: @escaping ([LeaderboardUser]) -> Void) {
+    func getGroupMembers(groupId: String, dates: [String], completion: @escaping ([LeaderboardUser]) -> Void) {
         guard let group = userGroups.first(where: { $0.id == groupId }) else {
             completion([])
             return
         }
-        
+
+        let memberIds = group.members
+        guard !memberIds.isEmpty else {
+            completion([])
+            return
+        }
+
         db.collection("leaderboard")
-            .whereField(FieldPath.documentID(), in: group.members)
-            .getDocuments { snapshot, error in
-                guard let documents = snapshot?.documents else {
+            .whereField(FieldPath.documentID(), in: memberIds)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self, let documents = snapshot?.documents else {
                     completion([])
                     return
                 }
-                
-                let users = documents.map { doc -> LeaderboardUser in
+
+                var users: [LeaderboardUser] = []
+                let fetchGroup = DispatchGroup()
+
+                for doc in documents {
                     let data = doc.data()
-                    return LeaderboardUser(
-                        id: doc.documentID,
-                        name: data["name"] as? String ?? "Unknown",
-                        steps: data["steps"] as? Int ?? 0
-                    )
+                    let name = data["name"] as? String ?? "Unknown"
+                    let isDemo = data["isDemo"] as? Bool ?? false
+
+                    if isDemo {
+                        let steps = data["steps"] as? Int ?? 0
+                        users.append(LeaderboardUser(id: doc.documentID, name: name, steps: steps))
+                    } else {
+                        fetchGroup.enter()
+                        self.fetchStepsForDates(userId: doc.documentID, dates: dates) { totalSteps in
+                            users.append(LeaderboardUser(id: doc.documentID, name: name, steps: totalSteps))
+                            fetchGroup.leave()
+                        }
+                    }
                 }
-                
-                completion(users)
+
+                fetchGroup.notify(queue: .main) {
+                    completion(users)
+                }
             }
+    }
+
+    /// Fetch sum of steps across multiple dates from daily subcollection
+    private func fetchStepsForDates(userId: String, dates: [String], completion: @escaping (Int) -> Void) {
+        guard !dates.isEmpty else {
+            completion(0)
+            return
+        }
+
+        let dailyRef = db.collection("leaderboard").document(userId).collection("daily")
+
+        // Firestore 'in' query limited to 10 items, batch if needed
+        let chunks = stride(from: 0, to: dates.count, by: 10).map {
+            Array(dates[$0..<min($0 + 10, dates.count)])
+        }
+
+        var totalSteps = 0
+        let chunkGroup = DispatchGroup()
+
+        for chunk in chunks {
+            chunkGroup.enter()
+            dailyRef.whereField(FieldPath.documentID(), in: chunk).getDocuments { snapshot, _ in
+                if let docs = snapshot?.documents {
+                    for doc in docs {
+                        if let steps = doc.data()["steps"] as? Int {
+                            totalSteps += steps
+                        }
+                    }
+                }
+                chunkGroup.leave()
+            }
+        }
+
+        chunkGroup.notify(queue: .main) {
+            completion(totalSteps)
+        }
     }
     
     // MARK: - Update Group Info (Admin only)
@@ -312,7 +413,15 @@ class GroupManager: ObservableObject {
         db.collection("groups").document(groupId).updateData([
             "name": name,
             "description": description
-        ], completion: completion)
+        ]) { [weak self] error in
+            if error == nil {
+                // Also update groupName in the invite lookup collection
+                self?.db.collection("groupInvites").document(group.inviteCode).updateData([
+                    "groupName": name
+                ])
+            }
+            completion(error)
+        }
     }
     
     // MARK: - Generate Invite Code
@@ -323,17 +432,25 @@ class GroupManager: ObservableObject {
     
     // MARK: - Generate Share Link (link-only, no code needed)
     func getShareLink(for group: CustomGroup) -> URL {
-        return URL(string: "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873")!
+        return URL(string: "https://\(GroupManager.webDomain)/join/\(group.inviteCode)")!
     }
     
     func getAppStoreLink() -> String {
         return "https://apps.apple.com/rs/app/steplease-step-tracker/id6758054873"
     }
     
+    static let webDomain = "step1-a9d46.web.app"
+
     func getShareText(for group: CustomGroup) -> String {
-        return "Join my group \"\(group.name)\" on StePlease! 🚶‍♂️\n\n\(getAppStoreLink())\n\nInvite code: \(group.inviteCode)"
+        let link = "https://\(GroupManager.webDomain)/join/\(group.inviteCode)"
+        return "Join my group \"\(group.name)\" on StePlease! 🚶‍♂️\n\n\(link)"
     }
-    
+
+    func getShareItems(for group: CustomGroup) -> [Any] {
+        let text = getShareText(for: group)
+        return [text]
+    }
+
     // MARK: - Join Group by Deep Link
     func joinGroupFromLink(code: String, completion: @escaping (Result<CustomGroup, Error>) -> Void) {
         joinGroup(inviteCode: code, completion: completion)

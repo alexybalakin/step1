@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var isOnboardingComplete = true // Default true, will check after auth
     @State private var midnightTimer: Timer?
     @State private var pendingGroupCode: String? = nil
+    @State private var pendingFriendCode: String? = nil
     @State private var showJoinGroupAlert = false
     @State private var joinGroupResult: String = ""
     
@@ -87,12 +88,16 @@ struct ContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     healthManager.checkAndTriggerCelebration()
                 }
+
             } else if newPhase == .background {
                 healthManager.stopPedometerUpdates()
                 Step1App.scheduleBackgroundSync()
             }
         }
         .onChange(of: authManager.isAuthenticated) { _, isAuth in
+            // Clear friend invite cache on any auth change (logout or new login)
+            leaderboardManager.clearFriendInviteCache()
+
             if isAuth && !authManager.userID.isEmpty {
                 isOnboardingComplete = UserDefaults.standard.bool(forKey: "onboarding_\(authManager.userID)")
                 selectedTab = 0 // Always show Main tab after login
@@ -115,6 +120,24 @@ struct ContentView: View {
                         }
                     }
                 }
+
+                // Handle pending friend invite after login
+                if let code = pendingFriendCode {
+                    pendingFriendCode = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        leaderboardManager.acceptFriendInvite(code: code) { result in
+                            switch result {
+                            case .success(let name):
+                                joinGroupResult = "You are now friends with \(name)!"
+                                showJoinGroupAlert = true
+                                selectedTab = 1
+                            case .failure(let error):
+                                joinGroupResult = error.localizedDescription
+                                showJoinGroupAlert = true
+                            }
+                        }
+                    }
+                }
             }
         }
         .onChange(of: authManager.userID) { _, userID in
@@ -123,34 +146,83 @@ struct ContentView: View {
             }
         }
         .onOpenURL { url in
-            // Handle deep link: steplease://join/XXXXXX
-            if let code = groupManager.parseJoinURL(url) {
-                if authManager.isAuthenticated && !authManager.isAnonymous {
-                    // User is logged in — join immediately
-                    groupManager.joinGroupFromLink(code: code) { result in
-                        switch result {
-                        case .success(let group):
-                            joinGroupResult = "Joined \"\(group.name)\"!"
-                            showJoinGroupAlert = true
-                            selectedTab = 1 // Switch to leaderboard
-                        case .failure(let error):
-                            joinGroupResult = error.localizedDescription
-                            showJoinGroupAlert = true
-                        }
-                    }
-                } else {
-                    // Save for after login
-                    pendingGroupCode = code
-                }
-            }
+            handleDeepLink(url)
         }
-        .alert("Group", isPresented: $showJoinGroupAlert) {
+        .alert("", isPresented: $showJoinGroupAlert) {
             Button("OK") { }
         } message: {
             Text(joinGroupResult)
         }
     }
     
+    private func handleDeepLink(_ url: URL) {
+        var friendCode: String?
+        var groupCode: String?
+
+        // Parse: steplease://friend/CODE or https://step1-a9d46.web.app/friend/CODE
+        if url.scheme == "steplease" && url.host == "friend" {
+            friendCode = url.pathComponents.count > 1 ? url.pathComponents[1] : nil
+        } else if url.host == "step1-a9d46.web.app" && url.pathComponents.contains("friend") {
+            if let idx = url.pathComponents.firstIndex(of: "friend"), idx + 1 < url.pathComponents.count {
+                friendCode = url.pathComponents[idx + 1]
+            }
+        }
+
+        // Parse: steplease://join/CODE or https://step1-a9d46.web.app/join/CODE
+        if url.scheme == "steplease" && url.host == "join" {
+            groupCode = url.pathComponents.count > 1 ? url.pathComponents[1] : nil
+        } else if url.host == "step1-a9d46.web.app" && url.pathComponents.contains("join") {
+            if let idx = url.pathComponents.firstIndex(of: "join"), idx + 1 < url.pathComponents.count {
+                groupCode = url.pathComponents[idx + 1]
+            }
+        }
+
+        // Also try the old parseJoinURL for backwards compat
+        if groupCode == nil, let code = groupManager.parseJoinURL(url) {
+            groupCode = code
+        }
+
+        // Handle friend invite
+        if let code = friendCode, !code.isEmpty {
+            if authManager.isAuthenticated && !authManager.isAnonymous {
+                leaderboardManager.acceptFriendInvite(code: code) { result in
+                    switch result {
+                    case .success(let name):
+                        joinGroupResult = "You are now friends with \(name)!"
+                        showJoinGroupAlert = true
+                        selectedTab = 1
+                    case .failure(let error):
+                        joinGroupResult = error.localizedDescription
+                        showJoinGroupAlert = true
+                    }
+                }
+            } else {
+                pendingFriendCode = code
+            }
+            return
+        }
+
+        // Handle group invite
+        if let code = groupCode, !code.isEmpty {
+            if authManager.isAuthenticated && !authManager.isAnonymous {
+                groupManager.joinGroupFromLink(code: code) { result in
+                    switch result {
+                    case .success(let group):
+                        joinGroupResult = "Joined \"\(group.name)\"!"
+                        showJoinGroupAlert = true
+                        selectedTab = 1
+                        groupManager.loadUserGroups()
+                    case .failure(let error):
+                        joinGroupResult = error.localizedDescription
+                        showJoinGroupAlert = true
+                    }
+                }
+            } else {
+                pendingGroupCode = code
+            }
+        }
+    }
+
     private func checkDayChange() {
         // Just restart pedometer for new day if needed — don't force navigate to today
         // User stays on whatever date they were viewing
@@ -583,9 +655,11 @@ struct MainAppView: View {
                     }
                 }
             } else if selectedTab == 1 {
-                // Leaderboard - only for logged in users
+                // Leaderboard
                 if authManager.isAnonymous {
                     LeaderboardLockedView(authManager: authManager)
+                } else if UserDefaults.standard.bool(forKey: "hide_leaderboard") {
+                    LeaderboardHiddenView()
                 } else {
                     TopLeaderboardView(
                         leaderboardManager: leaderboardManager,
@@ -769,9 +843,8 @@ struct MainAppView: View {
         }
         .background(DateChangeHandler(currentDate: $currentDate, lastDate: $lastDate, healthManager: healthManager))
         .onChange(of: currentDate) { _, newDate in
-            // Sync leaderboard date with main screen date
-            leaderboardManager.selectedDate = newDate
-            leaderboardManager.refresh()
+            // Leaderboard has its own independent date — don't sync here.
+            // Only sync today's steps for the current user.
         }
         .onChange(of: healthManager.steps) { _, newSteps in
             if Calendar.current.isDateInToday(currentDate) {

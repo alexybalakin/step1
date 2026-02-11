@@ -14,5 +14,9 @@
 	<array>
 		<string>group.alex.Step1</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:step1-a9d46.web.app</string>
+	</array>
 </dict>
 </plist>
